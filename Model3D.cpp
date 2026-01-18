@@ -30,7 +30,11 @@ namespace gps {
 		int materialId;
 
 		std::string err;
+		std::cout << "tinyobj::LoadObj start for " << fileName << std::endl;
+		std::cout.flush();
 		bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, fileName.c_str(), basePath.c_str(), GL_TRUE);
+		std::cout << "tinyobj::LoadObj end for " << fileName << std::endl;
+		std::cout.flush();
 
 		if (!err.empty()) {
 
@@ -167,10 +171,12 @@ namespace gps {
 				}
 			}
 
-			gps::Texture currentTexture;
-			currentTexture.id = ReadTextureFromFile(path.c_str());
-			currentTexture.type = std::string(type);
-			currentTexture.path = path;
+		std::cout << "Loading texture: " << path << std::endl;
+
+		gps::Texture currentTexture;
+		currentTexture.id = ReadTextureFromFile(path.c_str());
+		currentTexture.type = std::string(type);
+		currentTexture.path = path;
 
 			loadedTextures.push_back(currentTexture);
 
