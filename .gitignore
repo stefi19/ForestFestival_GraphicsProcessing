@@ -1,0 +1,25 @@
+# Visual Studio
+.vs/
+
+# Build outputs
+x64/
+x86/
+Debug/
+Release/
+out/
+build/
+
+# CMake / Make
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Windows junk
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

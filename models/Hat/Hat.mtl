@@ -1,0 +1,12 @@
+# Blender 4.5.4 LTS MTL File: 'Untitled.blend'
+# www.blender.org
+
+newmtl map_Cap001
+Ns 10.000005
+Ka 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 1
+map_Kd C:/Users/Stefi/Downloads/magicians-hat/textures/map_Cap001_BaseColor.png

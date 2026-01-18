@@ -1,0 +1,43 @@
+# Blender 4.5.4 LTS MTL File: 'Untitled.blend'
+# www.blender.org
+
+newmtl 10450_Rectangular_Grass_Patch_v1
+Ns 10.000005
+Ka 1.000000 1.000000 1.000000
+Ks 0.090000 0.090000 0.090000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/Users/Stefi/Downloads/10450_Rectangular_Grass_Patch_L3.123c827d110a-1347-4381-9208-e4f735762647/10450_Rectangular_Grass_Patch_L3.123c827d110a-1347-4381-9208-e4f735762647/10450_Rectangular_Grass_Patch_v1_Diffuse.jpg
+
+newmtl Material.001
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd C:/Users/Stefi/Downloads/simple-concert-stage/source/stageSF/stage-main_None_BaseColor.png
+map_d C:/Users/Stefi/Downloads/simple-concert-stage/source/stageSF/stage-main_None_BaseColor.png
+
+newmtl None
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.800000 0.800000 0.800000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd C:/Users/Stefi/Downloads/patio-chair-reconstruction/textures/patiochair_texture.jpg
+
+newmtl RedDeliciousApple_Mat
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 1
+map_Kd C:/Users/Stefi/Downloads/uploads_files_2409856_apple_low(1)/RedDeliciousApple_Color.tif
+map_Bump C:/Users/Stefi/Downloads/uploads_files_2409856_apple_low(1)/RedDeliciousApple_Normal.tif
