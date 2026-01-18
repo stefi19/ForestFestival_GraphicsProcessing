@@ -49,7 +49,21 @@ gps::Camera myCamera(
     glm::vec3(0.0f, 0.0f, 0.0f),
     glm::vec3(0.0f, 1.0f, 0.0f));
 
+// clap animation state
+bool clapActive = false;
+float clapOffset = 0.0f;
+float clapSpeed = 0.015f; // units per frame (slower for clearer observation)
+// based on the provided palm positions (~0.7m apart), use half-distance per-hand
+float clapMax = 0.35f; // maximum per-hand translation before reversing
+int clapDirection = 1; // 1 = moving inward, -1 = moving outward
+
 GLfloat cameraSpeed = 0.1f;
+
+// rabbit-from-hat animation state
+// 0 = hidden, 1 = appearing (scaling up), 2 = visible
+int rabbitState = 2;
+float rabbitScale = 1.0f;
+float rabbitScaleSpeed = 0.02f; // scale units per frame
 
 GLboolean pressedKeys[1024];
 
@@ -121,6 +135,22 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
 	if (key >= 0 && key < 1024) {
         if (action == GLFW_PRESS) {
             pressedKeys[key] = true;
+            if (key == GLFW_KEY_P) { // toggle clap animation
+                clapActive = !clapActive;
+                if (!clapActive) { clapOffset = 0.0f; clapDirection = 1; } // reset when turned off
+            }
+            if (key == GLFW_KEY_I) { // toggle rabbit appearance from hat
+                if (rabbitState == 2) {
+                    // currently visible -> hide immediately
+                    rabbitState = 0;
+                    rabbitScale = 0.0f;
+                } else if (rabbitState == 0) {
+                    // currently hidden -> start appearing animation
+                    rabbitScale = 0.0f;
+                    rabbitState = 1;
+                }
+                // if currently appearing (1), ignore presses until finished
+            }
         } else if (action == GLFW_RELEASE) {
             pressedKeys[key] = false;
         }
@@ -220,6 +250,29 @@ void processMovement() {
         // update normal matrix for teapot
         normalMatrix = glm::mat3(glm::inverseTranspose(view*model));
     }
+
+    // update clap animation each frame
+    if (clapActive) {
+        clapOffset += clapSpeed * (float)clapDirection;
+        if (clapOffset >= clapMax) {
+            clapOffset = clapMax;
+            clapDirection = -1;
+        } else if (clapOffset <= 0.0f) {
+            clapOffset = 0.0f;
+            clapDirection = 1;
+        }
+    } else {
+        clapOffset = 0.0f;
+        clapDirection = 1;
+    }
+        // update rabbit appearing animation (scale up)
+        if (rabbitState == 1) {
+            rabbitScale += rabbitScaleSpeed;
+            if (rabbitScale >= 1.0f) {
+                rabbitScale = 1.0f;
+                rabbitState = 2; // fully visible
+            }
+        }
 }
 
 void initOpenGLWindow() {
@@ -352,25 +405,41 @@ void renderModels(gps::Shader shader) {
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
     IceCreamModel.Draw(shader);
 
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    LeftHandsModel.Draw(shader);
+    // Left hand - apply clap translation
+    {
+        glm::mat4 leftModel = model;
+        leftModel = glm::translate(leftModel, glm::vec3(clapOffset, 0.0f, 0.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(leftModel));
+        nm = glm::mat3(glm::inverseTranspose(view * leftModel));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        LeftHandsModel.Draw(shader);
+    }
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
     PlaygroundModel.Draw(shader);
 
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    RabbitModel.Draw(shader);
+    // Rabbit - apply scaling (appearing from hat)
+    {
+        glm::mat4 rabbitModel = model;
+        rabbitModel = glm::scale(rabbitModel, glm::vec3(rabbitScale, rabbitScale, rabbitScale));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(rabbitModel));
+        nm = glm::mat3(glm::inverseTranspose(view * rabbitModel));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        // only draw if scale > 0 (hidden when 0)
+        if (rabbitScale > 0.0f) RabbitModel.Draw(shader);
+    }
 
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    RightHandsModel.Draw(shader);
+    // Right hand - apply clap translation (mirror)
+    {
+        glm::mat4 rightModel = model;
+        rightModel = glm::translate(rightModel, glm::vec3(-clapOffset, 0.0f, 0.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(rightModel));
+        nm = glm::mat3(glm::inverseTranspose(view * rightModel));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        RightHandsModel.Draw(shader);
+    }
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
