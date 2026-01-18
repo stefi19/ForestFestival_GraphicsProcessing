@@ -151,6 +151,13 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 }
 
+void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
+        glm::vec3 pos = myCamera.getPosition();
+        std::cout << "Camera X: " << pos.x << " Y: " << pos.y << " Z: " << pos.z << std::endl;
+    }
+}
+
 void processMovement() {
 	if (pressedKeys[GLFW_KEY_W]) {
 		myCamera.move(gps::MOVE_FORWARD, cameraSpeed);
@@ -223,6 +230,7 @@ void setWindowCallbacks() {
 	glfwSetWindowSizeCallback(myWindow.getWindow(), windowResizeCallback);
     glfwSetKeyCallback(myWindow.getWindow(), keyboardCallback);
     glfwSetCursorPosCallback(myWindow.getWindow(), mouseCallback);
+    glfwSetMouseButtonCallback(myWindow.getWindow(), mouseButtonCallback);
     // capture and hide the cursor for mouse look
     glfwSetInputMode(myWindow.getWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }
@@ -396,9 +404,7 @@ void renderScene() {
     // draw skybox last
     mySkyBox.Draw(skyboxShader, view, projection);
 
-    // print camera X,Y (X and Y components) to console
-    glm::vec3 camPos = myCamera.getPosition();
-    std::cout << "Camera X: " << camPos.x << " Y: " << camPos.y << "\r" << std::flush;
+    // camera position logging moved to mouse click handler
 
 }
 
@@ -419,7 +425,14 @@ int main(int argc, const char * argv[]) {
     initOpenGLState();
 	initModels();
     initSkybox();
-	initShaders();
+    initShaders();
+    // clamp camera maximum height to prevent flying above trees
+    myCamera.setMaxHeight(18.518449f);
+    // restrict camera movement to specified bounds
+    myCamera.setMovementBounds(
+        glm::vec3(-16.6564f, 1.5543f, -20.506f),
+        glm::vec3(27.2437f, 18.518449f, 19.3505f)
+    );
 	initUniforms();
     setWindowCallbacks();
 

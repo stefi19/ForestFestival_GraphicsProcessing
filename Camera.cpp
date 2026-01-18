@@ -15,6 +15,10 @@ namespace gps {
         // initialize yaw/pitch from front vector
         this->yaw = glm::degrees(std::atan2(this->cameraFrontDirection.z, this->cameraFrontDirection.x));
         this->pitch = glm::degrees(std::asin(this->cameraFrontDirection.y));
+        this->maxHeight = 1000.0f; // default very high
+        // default movement bounds (very large by default)
+        this->minBoundary = glm::vec3(-10000.0f);
+        this->maxBoundary = glm::vec3(10000.0f);
         
     }
 
@@ -44,12 +48,34 @@ namespace gps {
             this->cameraPosition -= this->cameraRightDirection * speed;
             this->cameraTarget -= this->cameraRightDirection * speed;
         } else if (direction == MOVE_UP) {
-            this->cameraPosition += this->cameraUpDirection * speed;
-            this->cameraTarget += this->cameraUpDirection * speed;
+            glm::vec3 newPos = this->cameraPosition + this->cameraUpDirection * speed;
+            if (newPos.y > this->maxHeight) newPos.y = this->maxHeight;
+            glm::vec3 delta = newPos - this->cameraPosition;
+            this->cameraPosition += delta;
+            this->cameraTarget += delta;
         } else if (direction == MOVE_DOWN) {
             this->cameraPosition -= this->cameraUpDirection * speed;
             this->cameraTarget -= this->cameraUpDirection * speed;
         }
+        // clamp position to movement bounds
+        this->cameraPosition.x = glm::clamp(this->cameraPosition.x, this->minBoundary.x, this->maxBoundary.x);
+        this->cameraPosition.y = glm::clamp(this->cameraPosition.y, this->minBoundary.y, this->maxBoundary.y);
+        this->cameraPosition.z = glm::clamp(this->cameraPosition.z, this->minBoundary.z, this->maxBoundary.z);
+        // keep target consistent with front direction after clamping
+        this->cameraTarget = this->cameraPosition + this->cameraFrontDirection;
+    }
+
+    void Camera::setMaxHeight(float maxY) {
+        this->maxHeight = maxY;
+    }
+
+    void Camera::setMovementBounds(const glm::vec3& minBound, const glm::vec3& maxBound) {
+        this->minBoundary = minBound;
+        this->maxBoundary = maxBound;
+    }
+
+    float Camera::getMaxHeight() {
+        return this->maxHeight;
     }
 
     //update the camera internal parameters following a camera rotate event
