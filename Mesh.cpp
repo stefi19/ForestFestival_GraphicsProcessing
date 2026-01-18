@@ -1,12 +1,14 @@
 #include "Mesh.hpp"
+#include <glm/gtc/type_ptr.hpp>
 namespace gps {
 
 	/* Mesh Constructor */
-	Mesh::Mesh(std::vector<Vertex> vertices, std::vector<GLuint> indices, std::vector<Texture> textures) {
+	Mesh::Mesh(std::vector<Vertex> vertices, std::vector<GLuint> indices, std::vector<Texture> textures, Material material) {
 
 		this->vertices = vertices;
 		this->indices = indices;
 		this->textures = textures;
+		this->material = material;
 
 		this->setupMesh();
 	}
@@ -20,9 +22,26 @@ namespace gps {
 
 		shader.useShaderProgram();
 
-		//set textures
-		for (GLuint i = 0; i < textures.size(); i++) {
+		// set material uniforms (fallback when no texture)
+		GLint matDiffLoc = glGetUniformLocation(shader.shaderProgram, "materialDiffuse");
+		if (matDiffLoc != -1) {
+			glUniform3fv(matDiffLoc, 1, glm::value_ptr(this->material.diffuse));
+		}
 
+		// detect presence of diffuse/specular textures
+		bool hasDiffuse = false;
+		bool hasSpecular = false;
+		for (GLuint i = 0; i < textures.size(); i++) {
+			if (this->textures[i].type == "diffuseTexture") hasDiffuse = true;
+			if (this->textures[i].type == "specularTexture") hasSpecular = true;
+		}
+		GLint hasDiffLoc = glGetUniformLocation(shader.shaderProgram, "hasDiffuseTexture");
+		if (hasDiffLoc != -1) glUniform1i(hasDiffLoc, hasDiffuse ? 1 : 0);
+		GLint hasSpecLoc = glGetUniformLocation(shader.shaderProgram, "hasSpecularTexture");
+		if (hasSpecLoc != -1) glUniform1i(hasSpecLoc, hasSpecular ? 1 : 0);
+
+		// bind textures
+		for (GLuint i = 0; i < textures.size(); i++) {
 			glActiveTexture(GL_TEXTURE0 + i);
 			glUniform1i(glGetUniformLocation(shader.shaderProgram, this->textures[i].type.c_str()), i);
 			glBindTexture(GL_TEXTURE_2D, this->textures[i].id);

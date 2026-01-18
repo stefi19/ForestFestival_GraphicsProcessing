@@ -52,7 +52,19 @@ GLfloat cameraSpeed = 0.1f;
 GLboolean pressedKeys[1024];
 
 // models
-gps::Model3D teapot;
+//gps::Model3D TeapotModel;
+gps::Model3D BallonModel;
+gps::Model3D BoothsModel;
+gps::Model3D FerisWheelModel;
+gps::Model3D HatModel;
+gps::Model3D IceCreamModel;
+gps::Model3D LeftHandsModel;
+gps::Model3D PlaygroundModel;
+gps::Model3D RabbitModel;
+gps::Model3D RightHandsModel;
+gps::Model3D SceneModel;
+gps::Model3D SwingModel;
+gps::Model3D WheelModel;
 GLfloat angle;
 
 // shaders
@@ -189,7 +201,19 @@ void initOpenGLState() {
 }
 
 void initModels() {
-    teapot.LoadModel("models/teapot/teapot20segUT.obj");
+    //TeapotModel.LoadModel("models/teapot/teapot20segUT.obj");
+    BallonModel.LoadModel("models/Ballon/Ballon.obj");
+    BoothsModel.LoadModel("models/Booths/Booths.obj");
+    FerisWheelModel.LoadModel("models/FerisWheel/FerisWhee;.obj");
+    HatModel.LoadModel("models/Hat/Hat.obj");
+    IceCreamModel.LoadModel("models/IceCream/IceCream.obj");
+    LeftHandsModel.LoadModel("models/LeftHands/LeftHands.obj");
+    PlaygroundModel.LoadModel("models/Playground/Playground.obj");
+    RabbitModel.LoadModel("models/Rabbit/Rabbit.obj");
+    RightHandsModel.LoadModel("models/RightHands/RightHands.obj");
+    SceneModel.LoadModel("models/Scene/Scene.obj");
+    SwingModel.LoadModel("models/Swing/Swing.obj");
+    WheelModel.LoadModel("models/Wheel/Wheel.obj");
 }
 
 void initShaders() {
@@ -236,18 +260,74 @@ void initUniforms() {
 	glUniform3fv(lightColorLoc, 1, glm::value_ptr(lightColor));
 }
 
-void renderTeapot(gps::Shader shader) {
-    // select active shader program
+void renderModels(gps::Shader shader) {
     shader.useShaderProgram();
 
-    //send teapot model matrix data to shader
+    // shared model transform used for now; compute normal matrix per draw
+    /*glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    TeapotModel.Draw(shader);*/
+
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    glm::mat3 nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    BallonModel.Draw(shader);
 
-    //send teapot normal matrix data to shader
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    BoothsModel.Draw(shader);
 
-    // draw teapot
-    teapot.Draw(shader);
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    FerisWheelModel.Draw(shader);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    HatModel.Draw(shader);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    IceCreamModel.Draw(shader);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    LeftHandsModel.Draw(shader);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    PlaygroundModel.Draw(shader);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    RabbitModel.Draw(shader);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    RightHandsModel.Draw(shader);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    SceneModel.Draw(shader);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    SwingModel.Draw(shader);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    WheelModel.Draw(shader);
 }
 
 void renderScene() {
@@ -255,8 +335,8 @@ void renderScene() {
 
 	//render the scene
 
-	// render the teapot
-	renderTeapot(myBasicShader);
+    // render all loaded models
+    renderModels(myBasicShader);
 
 }
 

@@ -104,12 +104,17 @@ namespace gps {
 			// Only try to read materials if the .mtl file is present
 			size_t a = shapes[s].mesh.material_ids.size();
 
+			gps::Material currentMaterial;
+			// default material
+			currentMaterial.ambient = glm::vec3(1.0f, 1.0f, 1.0f);
+			currentMaterial.diffuse = glm::vec3(1.0f, 1.0f, 1.0f);
+			currentMaterial.specular = glm::vec3(1.0f, 1.0f, 1.0f);
+
 			if (a > 0 && materials.size()>0) {
 
 				materialId = shapes[s].mesh.material_ids[0];
 				if (materialId != -1) {
 
-					gps::Material currentMaterial;
 					currentMaterial.ambient = glm::vec3(materials[materialId].ambient[0], materials[materialId].ambient[1], materials[materialId].ambient[2]);
 					currentMaterial.diffuse = glm::vec3(materials[materialId].diffuse[0], materials[materialId].diffuse[1], materials[materialId].diffuse[2]);
 					currentMaterial.specular = glm::vec3(materials[materialId].specular[0], materials[materialId].specular[1], materials[materialId].specular[2]);
@@ -146,7 +151,7 @@ namespace gps {
 				}
 			}
 
-			meshes.push_back(gps::Mesh(vertices, indices, textures));
+			meshes.push_back(gps::Mesh(vertices, indices, textures, currentMaterial));
 		}
 	}
 

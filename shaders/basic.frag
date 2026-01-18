@@ -16,6 +16,9 @@ uniform vec3 lightColor;
 // textures
 uniform sampler2D diffuseTexture;
 uniform sampler2D specularTexture;
+uniform vec3 materialDiffuse;
+uniform int hasDiffuseTexture;
+uniform int hasSpecularTexture;
 
 //components
 vec3 ambient;
@@ -52,8 +55,12 @@ void main()
 {
     computeDirLight();
 
+    // determine diffuse color (texture if present, otherwise material)
+    vec3 diffCol = hasDiffuseTexture == 1 ? texture(diffuseTexture, fTexCoords).rgb : materialDiffuse;
+    vec3 specCol = hasSpecularTexture == 1 ? texture(specularTexture, fTexCoords).rgb : vec3(1.0);
+
     //compute final vertex color
-    vec3 color = min((ambient + diffuse) * texture(diffuseTexture, fTexCoords).rgb + specular * texture(specularTexture, fTexCoords).rgb, 1.0f);
+    vec3 color = min((ambient + diffuse) * diffCol + specular * specCol, 1.0f);
 
     fColor = vec4(color, 1.0f);
 }
