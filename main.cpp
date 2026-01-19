@@ -8,10 +8,10 @@
 
 #include <GLFW/glfw3.h>
 
-#include <glm/glm.hpp> // Core GLM types and operations
-#include <glm/gtc/matrix_transform.hpp> // Common matrix transform utilities
-#include <glm/gtc/matrix_inverse.hpp> // Matrix inverse and transpose utilities
-#include <glm/gtc/type_ptr.hpp> // Utility to access GLM data pointers
+#include <glm/glm.hpp> //core glm functionality
+#include <glm/gtc/matrix_transform.hpp> //glm extension for generating common transformation matrices
+#include <glm/gtc/matrix_inverse.hpp> //glm extension for computing inverse matrices
+#include <glm/gtc/type_ptr.hpp> //glm extension for accessing the internal data structure of glm types
 
 #include "Window.h"
 #include "Shader.hpp"
@@ -20,62 +20,70 @@
 #include "SkyBox.hpp"
 
 #include <iostream>
-#include <cmath>
 
-// Application window instance
+// window
 gps::Window myWindow;
 
-// Global transformation matrices
+// matrices
 glm::mat4 model;
 glm::mat4 view;
 glm::mat4 projection;
-// Placeholder for unused balloon models
+        // Balloons skipped (not loaded)
 glm::mat3 normalMatrix;
-// Static base model matrices for non-animated meshes
-glm::mat4 structureBaseModel = glm::mat4(1.0f);
-glm::mat4 wheelBaseModel = glm::mat4(1.0f);
 
-// Global light parameters
+// light parameters
 glm::vec3 lightDir;
 glm::vec3 lightColor;
 
-// Locations of shader uniform variables
+// shader uniform locations
 GLint modelLoc;
 GLint viewLoc;
 GLint projectionLoc;
 GLint normalMatrixLoc;
 GLint lightDirLoc;
 GLint lightColorLoc;
+// fog uniform locations
+GLint fogColorLoc;
+GLint fogDensityLoc;
+GLint fogRadiusLoc;
+GLint fogRadiusXLoc;
+GLint hatCenterLoc;
+GLint fogStretchLoc;
+GLint fogEnabledLoc;
+GLint fogTimeLoc;
+// current fog parameter copies for debugging
+float currentFogDensity = 0.0f;
+float currentFogRadius = 0.0f;
+float currentFogStretchDown = 0.0f;
 
-// Primary scene camera
+// camera
 gps::Camera myCamera(
     glm::vec3(0.0f, 3.0f, 20.0f),
     glm::vec3(0.0f, 0.0f, 0.0f),
     glm::vec3(0.0f, 1.0f, 0.0f));
 
-// Clap animation state
+// clap animation state
 bool clapActive = false;
 float clapOffset = 0.0f;
-float clapSpeed = 0.015f; // Clap translation speed in units per frame
-// Maximum per-hand translation derived from measured palm separation
-float clapMax = 0.35f;
-// Clap motion direction where 1 is inward and -1 is outward
-int clapDirection = 1;
+float clapSpeed = 0.015f; // units per frame (slower for clearer observation)
+// based on the provided palm positions (~0.7m apart), use half-distance per-hand
+float clapMax = 0.35f; // maximum per-hand translation before reversing
+int clapDirection = 1; // 1 = moving inward, -1 = moving outward
 
 GLfloat cameraSpeed = 0.1f;
 
-// Rabbit visibility scale toggled instantly between zero and one
+// rabbit-from-hat animation state (instant toggle: 0 or 1)
 float rabbitScale = 1.0f;
 
 GLboolean pressedKeys[1024];
 
-// Mouse input state
+// mouse control
 double lastX = 0.0;
 double lastY = 0.0;
 bool firstMouse = true;
-float mouseSensitivity = 0.1f; // Mouse sensitivity in degrees per pixel
+float mouseSensitivity = 0.1f; // degrees per pixel
 
-// Scene model instances
+// models
 //gps::Model3D TeapotModel;
 gps::Model3D FerisWheelModel;
 gps::Model3D HatModel;
@@ -87,21 +95,18 @@ gps::Model3D RightHandsModel;
 gps::Model3D SceneModel;
 gps::Model3D SwingModel;
 gps::Model3D WheelModel;
-glm::vec3 wheelPivot = glm::vec3(0.0f);
 gps::Model3D TreesModel;
 GLfloat angle;
-// Wheel rotation state
-float wheelAngle = 0.0f;
-float wheelSpeed = 0.5f; // Rotation increment in degrees per frame
 
-// Shader programs and skybox
+// shaders
 gps::Shader myBasicShader;
+// skybox
 gps::SkyBox mySkyBox;
 gps::Shader skyboxShader;
 
 GLenum glCheckError_(const char *file, int line)
 {
-    GLenum errorCode = GL_NO_ERROR;
+	GLenum errorCode;
 	while ((errorCode = glGetError()) != GL_NO_ERROR) {
 		std::string error;
 		switch (errorCode) {
@@ -123,15 +128,13 @@ GLenum glCheckError_(const char *file, int line)
         }
 		std::cout << error << " | " << file << " (" << line << ")" << std::endl;
 	}
-#if 1
-    return errorCode;
-#endif
+	return errorCode;
 }
 #define glCheckError() glCheckError_(__FILE__, __LINE__)
 
 void windowResizeCallback(GLFWwindow* window, int width, int height) {
-    fprintf(stdout, "Window resized! New width: %d , and height: %d\n", width, height);
-    // Print new window dimensions on resize
+	fprintf(stdout, "Window resized! New width: %d , and height: %d\n", width, height);
+	//TODO
 }
 
 void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int mode) {
@@ -142,15 +145,15 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
 	if (key >= 0 && key < 1024) {
         if (action == GLFW_PRESS) {
             pressedKeys[key] = true;
-            if (key == GLFW_KEY_P) { // Toggle clap animation state
+            if (key == GLFW_KEY_P) { // toggle clap animation
                 clapActive = !clapActive;
-                if (!clapActive) { clapOffset = 0.0f; clapDirection = 1; } // Reset clap state when deactivated
+                if (!clapActive) { clapOffset = 0.0f; clapDirection = 1; } // reset when turned off
             }
-            if (key == GLFW_KEY_I) { // Toggle rabbit visibility instantly
+            if (key == GLFW_KEY_I) { // toggle rabbit appearance from hat (instant)
                 if (rabbitScale > 0.0f) {
-                    rabbitScale = 0.0f; // Hide rabbit
+                    rabbitScale = 0.0f; // hide immediately
                 } else {
-                    rabbitScale = 1.0f; // Show rabbit
+                    rabbitScale = 1.0f; // show immediately
                 }
             }
         } else if (action == GLFW_RELEASE) {
@@ -167,7 +170,7 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
     }
 
     double xoffset = xpos - lastX;
-    double yoffset = lastY - ypos; // Invert Y offset to account for window coordinate origin
+    double yoffset = lastY - ypos; // reversed since y-coordinates range from bottom to top
 
     lastX = xpos;
     lastY = ypos;
@@ -175,9 +178,9 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
     float xoff = (float)xoffset * mouseSensitivity;
     float yoff = (float)yoffset * mouseSensitivity;
 
-    // Rotate camera by pitch then yaw
+    // pitch, yaw (rotate expects pitch then yaw)
     myCamera.rotate(yoff, xoff);
-    // Update shader view uniform
+    // update view uniform
     view = myCamera.getViewMatrix();
     myBasicShader.useShaderProgram();
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -193,7 +196,7 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
 void processMovement() {
 	if (pressedKeys[GLFW_KEY_W]) {
 		myCamera.move(gps::MOVE_FORWARD, cameraSpeed);
-        // Update shader view uniform
+        // update view matrix for all models
         view = myCamera.getViewMatrix();
         myBasicShader.useShaderProgram();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -205,10 +208,9 @@ void processMovement() {
         myBasicShader.useShaderProgram();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     }
-
 	if (pressedKeys[GLFW_KEY_S]) {
 		myCamera.move(gps::MOVE_BACKWARD, cameraSpeed);
-        // Update shader view uniform
+        // update view matrix for all models
         view = myCamera.getViewMatrix();
         myBasicShader.useShaderProgram();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -223,7 +225,7 @@ void processMovement() {
 
 	if (pressedKeys[GLFW_KEY_A]) {
 		myCamera.move(gps::MOVE_LEFT, cameraSpeed);
-        // Update shader view uniform
+        // update view matrix for all models
         view = myCamera.getViewMatrix();
         myBasicShader.useShaderProgram();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -231,7 +233,7 @@ void processMovement() {
 
 	if (pressedKeys[GLFW_KEY_D]) {
 		myCamera.move(gps::MOVE_RIGHT, cameraSpeed);
-        // Update shader view uniform
+        // update view matrix for all models
         view = myCamera.getViewMatrix();
         myBasicShader.useShaderProgram();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -239,21 +241,21 @@ void processMovement() {
 
     if (pressedKeys[GLFW_KEY_Q]) {
         angle -= 1.0f;
-        // Update model matrix for teapot
+        // update model matrix for teapot
         model = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0, 1, 0));
-        // Update normal matrix for teapot
+        // update normal matrix for teapot
         normalMatrix = glm::mat3(glm::inverseTranspose(view*model));
     }
 
     if (pressedKeys[GLFW_KEY_E]) {
         angle += 1.0f;
-        // Update model matrix for teapot
+        // update model matrix for teapot
         model = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0, 1, 0));
-        // Update normal matrix for teapot
+        // update normal matrix for teapot
         normalMatrix = glm::mat3(glm::inverseTranspose(view*model));
     }
 
-    // Update clap animation state
+    // update clap animation each frame
     if (clapActive) {
         clapOffset += clapSpeed * (float)clapDirection;
         if (clapOffset >= clapMax) {
@@ -267,11 +269,7 @@ void processMovement() {
         clapOffset = 0.0f;
         clapDirection = 1;
     }
-    // Rabbit visibility is controlled by an instant toggle
-
-    // Advance wheel rotation angle and wrap at 360 degrees
-    wheelAngle += wheelSpeed;
-    if (wheelAngle >= 360.0f) wheelAngle -= 360.0f;
+        // rabbitScale is an instant toggle (no per-frame fading)
 }
 
 void initOpenGLWindow() {
@@ -283,23 +281,24 @@ void setWindowCallbacks() {
     glfwSetKeyCallback(myWindow.getWindow(), keyboardCallback);
     glfwSetCursorPosCallback(myWindow.getWindow(), mouseCallback);
     glfwSetMouseButtonCallback(myWindow.getWindow(), mouseButtonCallback);
-    // Capture and hide cursor for mouse look
+    // capture and hide the cursor for mouse look
     glfwSetInputMode(myWindow.getWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }
 
 void initOpenGLState() {
-	glClearColor(0.7f, 0.7f, 0.7f, 1.0f);
+    // match scene clear color to fog base color
+    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
 	glViewport(0, 0, myWindow.getWindowDimensions().width, myWindow.getWindowDimensions().height);
     glEnable(GL_FRAMEBUFFER_SRGB);
-    glEnable(GL_DEPTH_TEST); // Enable depth testing
-    glDepthFunc(GL_LESS); // Use less-only depth comparison
-    glEnable(GL_CULL_FACE); // Enable face culling
-    glCullFace(GL_BACK); // Cull back faces
-    glFrontFace(GL_CCW); // Set counter-clockwise winding as front
+	glEnable(GL_DEPTH_TEST); // enable depth-testing
+	glDepthFunc(GL_LESS); // depth-testing interprets a smaller value as "closer"
+	glEnable(GL_CULL_FACE); // cull face
+	glCullFace(GL_BACK); // cull back face
+	glFrontFace(GL_CCW); // GL_CCW for counter clock-wise
 }
 
 void initModels() {
-    // Teapot model loading disabled
+    //TeapotModel.LoadModel("models/teapot/teapot20segUT.obj");
     FerisWheelModel.LoadModel("models/FerisWheel/FerisWhee;.obj");
     HatModel.LoadModel("models/Hat/Hat.obj");
     IceCreamModel.LoadModel("models/IceCream/IceCream.obj");
@@ -311,24 +310,22 @@ void initModels() {
     SwingModel.LoadModel("models/Swing/Swing.obj");
     WheelModel.LoadModel("models/Wheel/Wheel.obj");
     TreesModel.LoadModel("models/MoreTrees/NewTrees.obj");
-    // Compute wheel pivot using the wheel mesh center
-    wheelPivot = WheelModel.getCenter();
-    std::cout << "Wheel pivot: " << wheelPivot.x << ", " << wheelPivot.y << ", " << wheelPivot.z << std::endl;
-    // Preserve original exported mesh placement by keeping identity base transforms
-    structureBaseModel = glm::mat4(1.0f);
-    wheelBaseModel = glm::mat4(1.0f);
+
+    // debug: print hat model-space center to help position fog
+    glm::vec3 hatCenterModel = HatModel.getCenter();
+    std::cout << "Hat model center: X:" << hatCenterModel.x << " Y:" << hatCenterModel.y << " Z:" << hatCenterModel.z << std::endl;
 }
 
 void initSkybox()
 {
     std::vector<const GLchar*> faces;
-    // Skybox face textures ordered as +X -X +Y -Y +Z -Z
-    faces.push_back("skybox/posx.jpg");
-    faces.push_back("skybox/negx.jpg");
-    faces.push_back("skybox/posy.jpg");
-    faces.push_back("skybox/negy.jpg");
-    faces.push_back("skybox/posz.jpg");
-    faces.push_back("skybox/negz.jpg");
+    // prefer existing JPEG faces when available
+    faces.push_back("skybox/posx.jpg"); // right
+    faces.push_back("skybox/negx.jpg"); // left
+    faces.push_back("skybox/posy.jpg"); // top
+    faces.push_back("skybox/negy.jpg"); // bottom
+    faces.push_back("skybox/posz.jpg"); // back
+    faces.push_back("skybox/negz.jpg"); // front
 
     mySkyBox.Load(faces);
 }
@@ -338,7 +335,7 @@ void initShaders() {
         "shaders/basic.vert",
         "shaders/basic.frag");
 
-    // Load skybox shader
+    // load skybox shader
     skyboxShader.loadShader("shaders/skyboxShader.vert", "shaders/skyboxShader.frag");
     skyboxShader.useShaderProgram();
 }
@@ -346,162 +343,212 @@ void initShaders() {
 void initUniforms() {
 	myBasicShader.useShaderProgram();
 
-    // Initialize model matrix and retrieve uniform location
+    // create model matrix for teapot
     model = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f));
-    modelLoc = glGetUniformLocation(myBasicShader.shaderProgram, "model");
+	modelLoc = glGetUniformLocation(myBasicShader.shaderProgram, "model");
 
-    // Get view matrix and upload to shader
-    view = myCamera.getViewMatrix();
-    viewLoc = glGetUniformLocation(myBasicShader.shaderProgram, "view");
+	// get view matrix for current camera
+	view = myCamera.getViewMatrix();
+	viewLoc = glGetUniformLocation(myBasicShader.shaderProgram, "view");
+	// send view matrix to shader
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
-    // Compute normal matrix for current model-view and retrieve uniform location
+    // compute normal matrix for teapot
     normalMatrix = glm::mat3(glm::inverseTranspose(view*model));
-    normalMatrixLoc = glGetUniformLocation(myBasicShader.shaderProgram, "normalMatrix");
+	normalMatrixLoc = glGetUniformLocation(myBasicShader.shaderProgram, "normalMatrix");
 
-    // Create projection matrix and set uniform
+	// create projection matrix
     projection = glm::perspective(glm::radians(45.0f),
                                (float)myWindow.getWindowDimensions().width / (float)myWindow.getWindowDimensions().height,
                                0.1f, 1000.0f);
-    projectionLoc = glGetUniformLocation(myBasicShader.shaderProgram, "projection");
-    glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));	
+	projectionLoc = glGetUniformLocation(myBasicShader.shaderProgram, "projection");
+	// send projection matrix to shader
+	glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));	
 
-    // Set global light direction and upload to shader
-    lightDir = glm::vec3(0.0f, 1.0f, 1.0f);
-    lightDirLoc = glGetUniformLocation(myBasicShader.shaderProgram, "lightDir");
-    glUniform3fv(lightDirLoc, 1, glm::value_ptr(lightDir));
+	//set the light direction (direction towards the light)
+	lightDir = glm::vec3(0.0f, 1.0f, 1.0f);
+	lightDirLoc = glGetUniformLocation(myBasicShader.shaderProgram, "lightDir");
+	// send light dir to shader
+	glUniform3fv(lightDirLoc, 1, glm::value_ptr(lightDir));
 
-    // Set global light color and upload to shader
-    lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
-    lightColorLoc = glGetUniformLocation(myBasicShader.shaderProgram, "lightColor");
-    glUniform3fv(lightColorLoc, 1, glm::value_ptr(lightColor));
+	//set light color
+	lightColor = glm::vec3(1.0f, 1.0f, 1.0f); //white light
+	lightColorLoc = glGetUniformLocation(myBasicShader.shaderProgram, "lightColor");
+	// send light color to shader
+	glUniform3fv(lightColorLoc, 1, glm::value_ptr(lightColor));
+
+    // fog defaults
+    fogColorLoc = glGetUniformLocation(myBasicShader.shaderProgram, "fogColor");
+    fogDensityLoc = glGetUniformLocation(myBasicShader.shaderProgram, "fogDensity");
+    fogRadiusLoc = glGetUniformLocation(myBasicShader.shaderProgram, "fogRadius");
+    hatCenterLoc = glGetUniformLocation(myBasicShader.shaderProgram, "hatCenterWorld");
+
+    // tuned fog settings: increased vertical stretch and stronger/wider horizontal
+    // user-requested: magenta, slightly denser, thin depth, extended left/right and slightly taller upward
+    glm::vec3 fogColor = glm::vec3(1.0f, 0.0f, 1.0f);
+    float fogDensity = 1.10f; // increased density (clamped in shader)
+    float fogRadius = 3.5f; // depth (Z) radius - keep small
+    float fogRadiusX = 9.0f; // left/right (X) radius - extended more
+    float fogStretchDown = 2.0f; // keep tall vertical stretch
+
+    glUniform3fv(fogColorLoc, 1, glm::value_ptr(fogColor));
+    glUniform1f(fogDensityLoc, fogDensity);
+    glUniform1f(fogRadiusLoc, fogRadius);
+    fogRadiusXLoc = glGetUniformLocation(myBasicShader.shaderProgram, "fogRadiusX");
+    if (fogRadiusXLoc != -1) glUniform1f(fogRadiusXLoc, fogRadiusX);
+    fogStretchLoc = glGetUniformLocation(myBasicShader.shaderProgram, "fogStretchDown");
+    if (fogStretchLoc != -1) glUniform1f(fogStretchLoc, fogStretchDown);
+    fogEnabledLoc = glGetUniformLocation(myBasicShader.shaderProgram, "fogEnabled");
+    if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 1);
+    // time uniform for animated fog
+    fogTimeLoc = glGetUniformLocation(myBasicShader.shaderProgram, "fogTime");
+    if (fogTimeLoc != -1) glUniform1f(fogTimeLoc, 0.0f);
+    // store current fog params for debugging
+    currentFogDensity = fogDensity;
+    currentFogRadius = fogRadius;
+    currentFogStretchDown = fogStretchDown;
 }
 
 void renderModels(gps::Shader shader) {
     shader.useShaderProgram();
-    glm::mat3 nm;
 
-    // Ferris wheel structure rendered with static base transform
-    {
-        glm::mat4 m = structureBaseModel;
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
-        nm = glm::mat3(glm::inverseTranspose(view * m));
-        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        FerisWheelModel.Draw(shader);
+    // update hat center uniform (compute in world space)
+    // compute hat bounds in world space and set fog center at mid-height of hat
+    glm::vec3 hatMinModel = HatModel.getMinBounds();
+    glm::vec3 hatMaxModel = HatModel.getMaxBounds();
+    glm::vec3 hatMinWorld = glm::vec3(model * glm::vec4(hatMinModel, 1.0f));
+    glm::vec3 hatMaxWorld = glm::vec3(model * glm::vec4(hatMaxModel, 1.0f));
+    glm::vec3 hatCenterWorld = glm::vec3((hatMinWorld + hatMaxWorld) * 0.5f);
+    // shift center slightly down so fog sits below mid-hat and extends toward the scene
+    hatCenterWorld.y -= 0.40f;
+    if (hatCenterLoc != -1) glUniform3fv(hatCenterLoc, 1, glm::value_ptr(hatCenterWorld));
+    // update animated fog time uniform
+    if (fogTimeLoc != -1) {
+        float t = (float)glfwGetTime();
+        glUniform1f(fogTimeLoc, t);
     }
+    // debug: occasionally print hat world center (disabled by default)
+    // std::cout << "Hat world center: " << hatCenterWorld.x << ", " << hatCenterWorld.y << ", " << hatCenterWorld.z << std::endl;
+    // periodic debug print of hat/fog params
+        // periodic fog debug print disabled (set to false to enable)
+        if (false) {
+            static double lastPrint = 0.0;
+            double now = glfwGetTime();
+            if (now - lastPrint > 1.0) {
+                lastPrint = now;
+                std::cout << "[FogDebug] hatCenterWorld=" << hatCenterWorld.x << "," << hatCenterWorld.y << "," << hatCenterWorld.z
+                    << " fogRadius=" << currentFogRadius << " fogDensity=" << currentFogDensity
+                    << " fogStretchDown=" << currentFogStretchDown << std::endl;
+            }
+        }
 
-    // Hat rendered with identity transform
-    {
-        glm::mat4 m = glm::mat4(1.0f);
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
-        nm = glm::mat3(glm::inverseTranspose(view * m));
-        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        HatModel.Draw(shader);
-    }
+    // shared model transform used for now; compute normal matrix per draw
+    /*glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    TeapotModel.Draw(shader);*/
 
-    // Ice cream rendered with identity transform
-    {
-        glm::mat4 m = glm::mat4(1.0f);
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
-        nm = glm::mat3(glm::inverseTranspose(view * m));
-        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        IceCreamModel.Draw(shader);
-    }
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    glm::mat3 nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
 
-    // Left hand translated by clap offset
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    FerisWheelModel.Draw(shader);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    // disable fog when drawing the hat itself so texture isn't fogged
+    if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 0);
+    HatModel.Draw(shader);
+    if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 1);
+
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    IceCreamModel.Draw(shader);
+
+    // Left hand - apply clap translation
     {
-        glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(clapOffset, 0.0f, 0.0f));
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
-        nm = glm::mat3(glm::inverseTranspose(view * m));
+        glm::mat4 leftModel = model;
+        leftModel = glm::translate(leftModel, glm::vec3(clapOffset, 0.0f, 0.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(leftModel));
+        nm = glm::mat3(glm::inverseTranspose(view * leftModel));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
         LeftHandsModel.Draw(shader);
     }
 
-    // Playground rendered with identity transform
-    {
-        glm::mat4 m = glm::mat4(1.0f);
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
-        nm = glm::mat3(glm::inverseTranspose(view * m));
-        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        PlaygroundModel.Draw(shader);
-    }
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    PlaygroundModel.Draw(shader);
 
-    // Rabbit rendered with instant scale toggle
+    // Rabbit - apply scaling (appearing from hat)
     {
-        glm::mat4 m = glm::scale(glm::mat4(1.0f), glm::vec3(rabbitScale, rabbitScale, rabbitScale));
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
-        nm = glm::mat3(glm::inverseTranspose(view * m));
+        glm::mat4 rabbitModel = model;
+        rabbitModel = glm::scale(rabbitModel, glm::vec3(rabbitScale, rabbitScale, rabbitScale));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(rabbitModel));
+        nm = glm::mat3(glm::inverseTranspose(view * rabbitModel));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        // disable fog while drawing the rabbit so its texture isn't fogged
+        if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 0);
+        // only draw if scale > 0 (hidden when 0)
         if (rabbitScale > 0.0f) RabbitModel.Draw(shader);
+        if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 1);
     }
 
-    // Right hand translated by negative clap offset
+    // Right hand - apply clap translation (mirror)
     {
-        glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(-clapOffset, 0.0f, 0.0f));
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
-        nm = glm::mat3(glm::inverseTranspose(view * m));
+        glm::mat4 rightModel = model;
+        rightModel = glm::translate(rightModel, glm::vec3(-clapOffset, 0.0f, 0.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(rightModel));
+        nm = glm::mat3(glm::inverseTranspose(view * rightModel));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
         RightHandsModel.Draw(shader);
     }
 
-    // Scene rendered with identity transform
-    {
-        glm::mat4 m = glm::mat4(1.0f);
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
-        nm = glm::mat3(glm::inverseTranspose(view * m));
-        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        SceneModel.Draw(shader);
-    }
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    SceneModel.Draw(shader);
 
-    // Swing rendered with identity transform
-    {
-        glm::mat4 m = glm::mat4(1.0f);
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
-        nm = glm::mat3(glm::inverseTranspose(view * m));
-        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        SwingModel.Draw(shader);
-    }
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    SwingModel.Draw(shader);
 
-    // Wheel rotated around its local pivot using wheelBaseModel as static base
-    {
-        glm::mat4 localRotate =
-            glm::translate(glm::mat4(1.0f), wheelPivot) *
-            glm::rotate(glm::mat4(1.0f), glm::radians(wheelAngle), glm::vec3(1.0f, 0.0f, 0.0f)) *
-            glm::translate(glm::mat4(1.0f), -wheelPivot);
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    WheelModel.Draw(shader);
 
-        glm::mat4 wheelModel = wheelBaseModel * localRotate;
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(wheelModel));
-        nm = glm::mat3(glm::inverseTranspose(view * wheelModel));
-        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        WheelModel.Draw(shader);
-    }
-
-    // Trees rendered with identity transform
-    {
-        glm::mat4 m = glm::mat4(1.0f);
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
-        nm = glm::mat3(glm::inverseTranspose(view * m));
-        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        TreesModel.Draw(shader);
-    }
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    nm = glm::mat3(glm::inverseTranspose(view * model));
+    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    TreesModel.Draw(shader);
 }
 
 void renderScene() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Render all scene objects
+	//render the scene
+
+    // render all loaded models
     renderModels(myBasicShader);
 
-    // Draw skybox last
+    // draw skybox last
     mySkyBox.Draw(skyboxShader, view, projection);
 
-    // Camera position is logged on right mouse click
+    // camera position logging moved to mouse click handler
 
 }
 
 void cleanup() {
     myWindow.Delete();
-    // Release application resources
+    //cleanup code for your own data
 }
 
 int main(int argc, const char * argv[]) {
@@ -517,9 +564,9 @@ int main(int argc, const char * argv[]) {
 	initModels();
     initSkybox();
     initShaders();
-    // Clamp camera maximum height
+    // clamp camera maximum height to prevent flying above trees
     myCamera.setMaxHeight(18.518449f);
-    // Restrict camera movement to specified world-space bounds
+    // restrict camera movement to specified bounds
     myCamera.setMovementBounds(
         glm::vec3(-16.6564f, 1.5543f, -20.506f),
         glm::vec3(27.2437f, 18.518449f, 19.3505f)

@@ -25,6 +25,9 @@ namespace gps {
 
 		// compute model center (bounding box center in model space)
 		glm::vec3 getCenter();
+		// debug: return axis-aligned bounds
+		glm::vec3 getMinBounds();
+		glm::vec3 getMaxBounds();
 
     private:
 		// Component meshes - group of objects
