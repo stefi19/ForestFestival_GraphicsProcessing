@@ -3,6 +3,7 @@
 in vec3 fPosition;
 in vec3 fNormal;
 in vec2 fTexCoords;
+in vec4 fFragPosLightSpace;
 
 out vec4 fColor;
 
@@ -37,6 +38,7 @@ uniform sampler2D specularTexture;
 uniform vec3 materialDiffuse;
 uniform int hasDiffuseTexture;
 uniform int hasSpecularTexture;
+uniform sampler2D shadowMap;
 
 //components
 vec3 ambient;
@@ -44,6 +46,33 @@ float ambientStrength = 0.2f;
 vec3 diffuse;
 vec3 specular;
 float specularStrength = 0.5f;
+
+// Shadow calculation helper (declared at global scope)
+float ShadowCalculation(vec4 fragPosLightSpace, vec3 normalEye) {
+    // perform perspective divide
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    // transform to [0,1]
+    projCoords = projCoords * 0.5 + 0.5;
+    // if outside shadow map, not in shadow
+    if (projCoords.z > 1.0) return 0.0;
+    // get closest depth from light's perspective (using [0,1] coords)
+    float closestDepth = texture(shadowMap, projCoords.xy).r;
+    // current depth
+    float currentDepth = projCoords.z;
+    // bias to reduce shadow acne
+    float bias = max(0.0025 * (1.0 - dot(normalEye, normalize(vec3(view * vec4(lightDir,0.0))))), 0.0005);
+    // simple PCF
+    float shadow = 0.0;
+    float texelSize = 1.0 / 2048.0; // matches SHADOW_* used in main (hardcoded here)
+    for(int x = -1; x <= 1; ++x) {
+        for(int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0;
+    return shadow;
+}
 
 void main() 
 {
@@ -113,8 +142,12 @@ void main()
     vec3 totalDiffuse = diffuse + spotDiffuse;
     vec3 totalSpecular = specular + spotSpecular;
 
-    // compute final vertex color
-    vec3 color = min((totalAmbient + totalDiffuse) * diffCol + totalSpecular * specCol, 1.0f);
+    // ShadowCalculation is defined at global scope (above main)
+
+    // compute shadow factor and final color (attenuate diffuse+specular when in shadow)
+    float shadow = ShadowCalculation(fFragPosLightSpace, normalEye);
+    vec3 lit = (totalAmbient + (1.0 - shadow) * totalDiffuse) * diffCol + (1.0 - shadow) * totalSpecular * specCol;
+    vec3 color = min(lit, 1.0f);
 
     // compute ellipsoidal mask around hat center, stretched downward to cover the scene
     vec3 delta = fragPosWorld - hatCenterWorld;

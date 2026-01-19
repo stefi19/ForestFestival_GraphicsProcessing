@@ -53,7 +53,7 @@ namespace gps {
         //check linking info
         glGetProgramiv(shaderProgramId, GL_LINK_STATUS, &success);
         if(!success) {
-            glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+            glGetProgramInfoLog(shaderProgramId, 512, NULL, infoLog);
             std::cout << "Shader linking error\n" << infoLog << std::endl;
         }
     }

@@ -142,6 +142,7 @@ GLfloat angle;
 // shaders
 gps::Shader myBasicShader;
 gps::Shader rainShader;
+gps::Shader depthShader;
 // skybox
 gps::SkyBox mySkyBox;
 gps::Shader skyboxShader;
@@ -157,6 +158,12 @@ GLint rainDropWidthLoc = -1;
 GLint rainFallSpeedLoc = -1;
 GLint rainColumnScaleLoc = -1;
 GLint rainRotationLoc = -1;
+// shadow map
+GLuint depthMapFBO = 0;
+GLuint depthMap = 0;
+const GLuint SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
+GLint shadowMapLoc = -1;
+GLint lightSpaceLoc = -1;
 float rainIntensity = 0.15f;
 glm::vec3 rainColor = glm::vec3(0.6f, 0.6f, 0.9f);
 
@@ -444,6 +451,9 @@ void initShaders() {
         "shaders/basic.vert",
         "shaders/basic.frag");
 
+    // depth shader for shadow map
+    depthShader.loadShader("shaders/depth.vert", "shaders/depth.frag");
+
     // load skybox shader
     skyboxShader.loadShader("shaders/skyboxShader.vert", "shaders/skyboxShader.frag");
     skyboxShader.useShaderProgram();
@@ -492,6 +502,38 @@ void initRain() {
     if (rainFallSpeedLoc != -1) glUniform1f(rainFallSpeedLoc, 0.8f); // slower fall
     if (rainColumnScaleLoc != -1) glUniform1f(rainColumnScaleLoc, 22.0f); // slightly sparser columns
     if (rainRotationLoc != -1) glUniform1f(rainRotationLoc, 90.0f); // rotate drops 90 degrees
+}
+
+void initShadowMap() {
+    // create FBO
+    glGenFramebuffers(1, &depthMapFBO);
+    // create depth texture
+    glGenTextures(1, &depthMap);
+    glBindTexture(GL_TEXTURE_2D, depthMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+    // attach
+    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+glm::mat4 computeLightSpaceTrMatrix() {
+    // use directional light direction as a point along the light
+    glm::vec3 lightPos = lightDir; // acceptable for directional approximation
+    glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0f,1.0f,0.0f));
+    float near_plane = -50.0f, far_plane = 50.0f;
+    float orthoSize = 40.0f;
+    glm::mat4 lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, near_plane, far_plane);
+    return lightProjection * lightView;
 }
 
 void initUniforms() {
@@ -560,6 +602,10 @@ void initUniforms() {
     // flat/ polygonal shading uniform
     flatShadingLoc = glGetUniformLocation(myBasicShader.shaderProgram, "flatShading");
     if (flatShadingLoc != -1) glUniform1i(flatShadingLoc, 0);
+    // shadow map sampler and light-space uniform
+    shadowMapLoc = glGetUniformLocation(myBasicShader.shaderProgram, "shadowMap");
+    if (shadowMapLoc != -1) glUniform1i(shadowMapLoc, 5); // bind depth map to texture unit 5
+    lightSpaceLoc = glGetUniformLocation(myBasicShader.shaderProgram, "lightSpaceTrMatrix");
     // spotlight uniform locations and defaults (only 2 outer spotlights)
     for (int i = 0; i < 2; ++i) {
         std::string idx = std::to_string(i);
@@ -786,12 +832,87 @@ void renderModels(gps::Shader shader) {
 }
 
 void renderScene() {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // 1) Render scene to depth map from light's perspective
+    glm::mat4 lightSpace = computeLightSpaceTrMatrix();
+    // render depth map
+    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    glCheckError();
+    depthShader.useShaderProgram();
+    GLint lsLoc = glGetUniformLocation(depthShader.shaderProgram, "lightSpaceTrMatrix");
+    if (lsLoc != -1) glUniformMatrix4fv(lsLoc, 1, GL_FALSE, glm::value_ptr(lightSpace));
+    // render scene geometry into depth map (reuse model transforms from renderModels)
+    // For depth pass we only need to set model matrix and draw meshes
+    // FerisWheel
+    glm::mat4 nmModel = model;
+    GLint dModelLoc = glGetUniformLocation(depthShader.shaderProgram, "model");
+    if (dModelLoc != -1) glUniformMatrix4fv(dModelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    FerisWheelModel.Draw(depthShader, 0);
+    if (dModelLoc != -1) glUniformMatrix4fv(dModelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    HatModel.Draw(depthShader, 0);
+    if (dModelLoc != -1) glUniformMatrix4fv(dModelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    IceCreamModel.Draw(depthShader, 0);
+    // Left hands (with clap offset)
+    {
+        glm::mat4 leftModel = model;
+        leftModel = glm::translate(leftModel, glm::vec3(clapOffset, 0.0f, 0.0f));
+        if (dModelLoc != -1) glUniformMatrix4fv(dModelLoc, 1, GL_FALSE, glm::value_ptr(leftModel));
+        LeftHandsModel.Draw(depthShader, 0);
+    }
+    if (dModelLoc != -1) glUniformMatrix4fv(dModelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    PlaygroundModel.Draw(depthShader, 0);
+    // Rabbit (scaled)
+    {
+        glm::mat4 rabbitModel = model;
+        rabbitModel = glm::scale(rabbitModel, glm::vec3(rabbitScale, rabbitScale, rabbitScale));
+        if (dModelLoc != -1) glUniformMatrix4fv(dModelLoc, 1, GL_FALSE, glm::value_ptr(rabbitModel));
+        if (rabbitScale > 0.0f) RabbitModel.Draw(depthShader, 0);
+    }
+    // Right hand
+    {
+        glm::mat4 rightModel = model;
+        rightModel = glm::translate(rightModel, glm::vec3(-clapOffset, 0.0f, 0.0f));
+        if (dModelLoc != -1) glUniformMatrix4fv(dModelLoc, 1, GL_FALSE, glm::value_ptr(rightModel));
+        RightHandsModel.Draw(depthShader, 0);
+    }
+    if (dModelLoc != -1) glUniformMatrix4fv(dModelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    SceneModel.Draw(depthShader, 0);
+    // Swing (with transform)
+    {
+        glm::vec3 swingPivotModel = SwingModel.getMaxBounds();
+        float swingAmplitudeDeg = 6.0f;
+        float swingSpeed = 0.8f;
+        float angleSwing = glm::radians(swingAmplitudeDeg) * sin((float)glfwGetTime() * swingSpeed);
+        glm::mat4 swingTransform = model * glm::translate(glm::mat4(1.0f), swingPivotModel)
+                                    * glm::rotate(glm::mat4(1.0f), angleSwing, glm::vec3(1.0f, 0.0f, 0.0f))
+                                    * glm::translate(glm::mat4(1.0f), -swingPivotModel);
+        if (dModelLoc != -1) glUniformMatrix4fv(dModelLoc, 1, GL_FALSE, glm::value_ptr(swingTransform));
+        SwingModel.Draw(depthShader, 0);
+        if (dModelLoc != -1) glUniformMatrix4fv(dModelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    }
+    WheelModel.Draw(depthShader, 0);
+    TreesModel.Draw(depthShader, 0);
+    // done depth pass
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glCheckError();
+    // restore viewport
+    glViewport(0, 0, myWindow.getWindowDimensions().width, myWindow.getWindowDimensions().height);
 
-	//render the scene
+    // 2) Render scene as usual, but bind depth map and provide lightSpace matrix
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    myBasicShader.useShaderProgram();
+    if (lightSpaceLoc != -1) glUniformMatrix4fv(lightSpaceLoc, 1, GL_FALSE, glm::value_ptr(lightSpace));
+    if (shadowMapLoc != -1) {
+        glActiveTexture(GL_TEXTURE0 + 5);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
+        glCheckError();
+        glActiveTexture(GL_TEXTURE0);
+    }
 
-    // render all loaded models
+    // render all models normally
     renderModels(myBasicShader);
+    glCheckError();
 
     // render rain overlay across the whole view
     glEnable(GL_BLEND);
@@ -977,6 +1098,8 @@ int main(int argc, const char * argv[]) {
     initSkybox();
     initShaders();
     initRain();
+    // initialize shadow map resources
+    initShadowMap();
     // clamp camera maximum height to prevent flying above trees
     myCamera.setMaxHeight(18.518449f);
     // restrict camera movement to specified bounds
