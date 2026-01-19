@@ -563,7 +563,26 @@ void renderModels(gps::Shader shader) {
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    SwingModel.Draw(shader);
+    // Swing: apply small oscillating rotation around its top pivot to simulate gentle swinging
+    {
+        // choose pivot near top of the model in model space
+        glm::vec3 swingPivotModel = SwingModel.getMaxBounds();
+        // user-requested: very small forward/back rotation
+        float swingAmplitudeDeg = 6.0f; // degrees
+        float swingSpeed = 0.8f; // oscillations per second
+        float angle = glm::radians(swingAmplitudeDeg) * sin((float)glfwGetTime() * swingSpeed);
+        glm::mat4 swingTransform = model * glm::translate(glm::mat4(1.0f), swingPivotModel)
+                                    * glm::rotate(glm::mat4(1.0f), angle, glm::vec3(1.0f, 0.0f, 0.0f))
+                                    * glm::translate(glm::mat4(1.0f), -swingPivotModel);
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(swingTransform));
+        nm = glm::mat3(glm::inverseTranspose(view * swingTransform));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        SwingModel.Draw(shader);
+        // restore shared model matrix for subsequent draws
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+        nm = glm::mat3(glm::inverseTranspose(view * model));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+    }
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
