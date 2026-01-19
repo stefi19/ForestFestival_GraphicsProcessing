@@ -100,9 +100,20 @@ GLfloat angle;
 
 // shaders
 gps::Shader myBasicShader;
+gps::Shader rainShader;
 // skybox
 gps::SkyBox mySkyBox;
 gps::Shader skyboxShader;
+
+// rain fullscreen quad
+GLuint rainQuadVAO = 0;
+GLuint rainQuadVBO = 0;
+GLint rainTimeLoc = -1;
+GLint rainCamPosLoc = -1;
+GLint rainIntensityLoc = -1;
+GLint rainColorLoc = -1;
+float rainIntensity = 0.7f;
+glm::vec3 rainColor = glm::vec3(0.6f, 0.6f, 0.9f);
 
 GLenum glCheckError_(const char *file, int line)
 {
@@ -338,6 +349,40 @@ void initShaders() {
     // load skybox shader
     skyboxShader.loadShader("shaders/skyboxShader.vert", "shaders/skyboxShader.frag");
     skyboxShader.useShaderProgram();
+
+    // load rain shader
+    rainShader.loadShader("shaders/rain.vert", "shaders/rain.frag");
+    rainShader.useShaderProgram();
+}
+
+void initRain() {
+    // fullscreen quad (NDC)
+    float quadVertices[] = {
+        // positions      // uv
+        -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
+         1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
+
+        -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
+         1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
+         1.0f,  1.0f, 0.0f,  1.0f, 1.0f
+    };
+
+    glGenVertexArrays(1, &rainQuadVAO);
+    glGenBuffers(1, &rainQuadVBO);
+    glBindVertexArray(rainQuadVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, rainQuadVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glBindVertexArray(0);
+
+    rainTimeLoc = glGetUniformLocation(rainShader.shaderProgram, "time");
+    rainCamPosLoc = glGetUniformLocation(rainShader.shaderProgram, "camPos");
+    rainIntensityLoc = glGetUniformLocation(rainShader.shaderProgram, "intensity");
+    rainColorLoc = glGetUniformLocation(rainShader.shaderProgram, "rainColor");
 }
 
 void initUniforms() {
@@ -539,6 +584,24 @@ void renderScene() {
     // render all loaded models
     renderModels(myBasicShader);
 
+    // render rain overlay across the whole view
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    rainShader.useShaderProgram();
+    if (rainTimeLoc != -1) glUniform1f(rainTimeLoc, (float)glfwGetTime());
+    if (rainCamPosLoc != -1) {
+        glm::vec3 cp = myCamera.getPosition();
+        glUniform3fv(rainCamPosLoc, 1, glm::value_ptr(cp));
+    }
+    if (rainIntensityLoc != -1) glUniform1f(rainIntensityLoc, rainIntensity);
+    if (rainColorLoc != -1) glUniform3fv(rainColorLoc, 1, glm::value_ptr(rainColor));
+    glBindVertexArray(rainQuadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+
     // draw skybox last
     mySkyBox.Draw(skyboxShader, view, projection);
 
@@ -564,6 +627,7 @@ int main(int argc, const char * argv[]) {
 	initModels();
     initSkybox();
     initShaders();
+    initRain();
     // clamp camera maximum height to prevent flying above trees
     myCamera.setMaxHeight(18.518449f);
     // restrict camera movement to specified bounds
