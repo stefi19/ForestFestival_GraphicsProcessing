@@ -8,6 +8,24 @@ namespace gps {
 		ReadOBJ(fileName, basePath);
 	}
 
+	glm::vec3 Model3D::getCenter() {
+
+		if (meshes.empty()) return glm::vec3(0.0f);
+
+		glm::vec3 minV(FLT_MAX);
+		glm::vec3 maxV(-FLT_MAX);
+
+		for (size_t i = 0; i < meshes.size(); ++i) {
+			for (size_t v = 0; v < meshes[i].vertices.size(); ++v) {
+				glm::vec3 p = meshes[i].vertices[v].Position;
+				minV = glm::min(minV, p);
+				maxV = glm::max(maxV, p);
+			}
+		}
+
+		return (minV + maxV) * 0.5f;
+	}
+
     void Model3D::LoadModel(std::string fileName, std::string basePath)	{
 
 		ReadOBJ(fileName, basePath);

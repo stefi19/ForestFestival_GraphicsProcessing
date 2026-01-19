@@ -8,10 +8,10 @@
 
 #include <GLFW/glfw3.h>
 
-#include <glm/glm.hpp> //core glm functionality
-#include <glm/gtc/matrix_transform.hpp> //glm extension for generating common transformation matrices
-#include <glm/gtc/matrix_inverse.hpp> //glm extension for computing inverse matrices
-#include <glm/gtc/type_ptr.hpp> //glm extension for accessing the internal data structure of glm types
+#include <glm/glm.hpp> // Core GLM types and operations
+#include <glm/gtc/matrix_transform.hpp> // Common matrix transform utilities
+#include <glm/gtc/matrix_inverse.hpp> // Matrix inverse and transpose utilities
+#include <glm/gtc/type_ptr.hpp> // Utility to access GLM data pointers
 
 #include "Window.h"
 #include "Shader.hpp"
@@ -20,22 +20,26 @@
 #include "SkyBox.hpp"
 
 #include <iostream>
+#include <cmath>
 
-// window
+// Application window instance
 gps::Window myWindow;
 
-// matrices
+// Global transformation matrices
 glm::mat4 model;
 glm::mat4 view;
 glm::mat4 projection;
-        // Balloons skipped (not loaded)
+// Placeholder for unused balloon models
 glm::mat3 normalMatrix;
+// Static base model matrices for non-animated meshes
+glm::mat4 structureBaseModel = glm::mat4(1.0f);
+glm::mat4 wheelBaseModel = glm::mat4(1.0f);
 
-// light parameters
+// Global light parameters
 glm::vec3 lightDir;
 glm::vec3 lightColor;
 
-// shader uniform locations
+// Locations of shader uniform variables
 GLint modelLoc;
 GLint viewLoc;
 GLint projectionLoc;
@@ -43,37 +47,35 @@ GLint normalMatrixLoc;
 GLint lightDirLoc;
 GLint lightColorLoc;
 
-// camera
+// Primary scene camera
 gps::Camera myCamera(
     glm::vec3(0.0f, 3.0f, 20.0f),
     glm::vec3(0.0f, 0.0f, 0.0f),
     glm::vec3(0.0f, 1.0f, 0.0f));
 
-// clap animation state
+// Clap animation state
 bool clapActive = false;
 float clapOffset = 0.0f;
-float clapSpeed = 0.015f; // units per frame (slower for clearer observation)
-// based on the provided palm positions (~0.7m apart), use half-distance per-hand
-float clapMax = 0.35f; // maximum per-hand translation before reversing
-int clapDirection = 1; // 1 = moving inward, -1 = moving outward
+float clapSpeed = 0.015f; // Clap translation speed in units per frame
+// Maximum per-hand translation derived from measured palm separation
+float clapMax = 0.35f;
+// Clap motion direction where 1 is inward and -1 is outward
+int clapDirection = 1;
 
 GLfloat cameraSpeed = 0.1f;
 
-// rabbit-from-hat animation state
-// 0 = hidden, 1 = appearing (scaling up), 2 = visible
-int rabbitState = 2;
+// Rabbit visibility scale toggled instantly between zero and one
 float rabbitScale = 1.0f;
-float rabbitScaleSpeed = 0.02f; // scale units per frame
 
 GLboolean pressedKeys[1024];
 
-// mouse control
+// Mouse input state
 double lastX = 0.0;
 double lastY = 0.0;
 bool firstMouse = true;
-float mouseSensitivity = 0.1f; // degrees per pixel
+float mouseSensitivity = 0.1f; // Mouse sensitivity in degrees per pixel
 
-// models
+// Scene model instances
 //gps::Model3D TeapotModel;
 gps::Model3D FerisWheelModel;
 gps::Model3D HatModel;
@@ -85,18 +87,21 @@ gps::Model3D RightHandsModel;
 gps::Model3D SceneModel;
 gps::Model3D SwingModel;
 gps::Model3D WheelModel;
+glm::vec3 wheelPivot = glm::vec3(0.0f);
 gps::Model3D TreesModel;
 GLfloat angle;
+// Wheel rotation state
+float wheelAngle = 0.0f;
+float wheelSpeed = 0.5f; // Rotation increment in degrees per frame
 
-// shaders
+// Shader programs and skybox
 gps::Shader myBasicShader;
-// skybox
 gps::SkyBox mySkyBox;
 gps::Shader skyboxShader;
 
 GLenum glCheckError_(const char *file, int line)
 {
-	GLenum errorCode;
+    GLenum errorCode = GL_NO_ERROR;
 	while ((errorCode = glGetError()) != GL_NO_ERROR) {
 		std::string error;
 		switch (errorCode) {
@@ -118,13 +123,15 @@ GLenum glCheckError_(const char *file, int line)
         }
 		std::cout << error << " | " << file << " (" << line << ")" << std::endl;
 	}
-	return errorCode;
+#if 1
+    return errorCode;
+#endif
 }
 #define glCheckError() glCheckError_(__FILE__, __LINE__)
 
 void windowResizeCallback(GLFWwindow* window, int width, int height) {
-	fprintf(stdout, "Window resized! New width: %d , and height: %d\n", width, height);
-	//TODO
+    fprintf(stdout, "Window resized! New width: %d , and height: %d\n", width, height);
+    // Print new window dimensions on resize
 }
 
 void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int mode) {
@@ -135,21 +142,16 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
 	if (key >= 0 && key < 1024) {
         if (action == GLFW_PRESS) {
             pressedKeys[key] = true;
-            if (key == GLFW_KEY_P) { // toggle clap animation
+            if (key == GLFW_KEY_P) { // Toggle clap animation state
                 clapActive = !clapActive;
-                if (!clapActive) { clapOffset = 0.0f; clapDirection = 1; } // reset when turned off
+                if (!clapActive) { clapOffset = 0.0f; clapDirection = 1; } // Reset clap state when deactivated
             }
-            if (key == GLFW_KEY_I) { // toggle rabbit appearance from hat
-                if (rabbitState == 2) {
-                    // currently visible -> hide immediately
-                    rabbitState = 0;
-                    rabbitScale = 0.0f;
-                } else if (rabbitState == 0) {
-                    // currently hidden -> start appearing animation
-                    rabbitScale = 0.0f;
-                    rabbitState = 1;
+            if (key == GLFW_KEY_I) { // Toggle rabbit visibility instantly
+                if (rabbitScale > 0.0f) {
+                    rabbitScale = 0.0f; // Hide rabbit
+                } else {
+                    rabbitScale = 1.0f; // Show rabbit
                 }
-                // if currently appearing (1), ignore presses until finished
             }
         } else if (action == GLFW_RELEASE) {
             pressedKeys[key] = false;
@@ -165,7 +167,7 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
     }
 
     double xoffset = xpos - lastX;
-    double yoffset = lastY - ypos; // reversed since y-coordinates range from bottom to top
+    double yoffset = lastY - ypos; // Invert Y offset to account for window coordinate origin
 
     lastX = xpos;
     lastY = ypos;
@@ -173,9 +175,9 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
     float xoff = (float)xoffset * mouseSensitivity;
     float yoff = (float)yoffset * mouseSensitivity;
 
-    // pitch, yaw (rotate expects pitch then yaw)
+    // Rotate camera by pitch then yaw
     myCamera.rotate(yoff, xoff);
-    // update view uniform
+    // Update shader view uniform
     view = myCamera.getViewMatrix();
     myBasicShader.useShaderProgram();
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -191,7 +193,7 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
 void processMovement() {
 	if (pressedKeys[GLFW_KEY_W]) {
 		myCamera.move(gps::MOVE_FORWARD, cameraSpeed);
-        // update view matrix for all models
+        // Update shader view uniform
         view = myCamera.getViewMatrix();
         myBasicShader.useShaderProgram();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -206,7 +208,7 @@ void processMovement() {
 
 	if (pressedKeys[GLFW_KEY_S]) {
 		myCamera.move(gps::MOVE_BACKWARD, cameraSpeed);
-        // update view matrix for all models
+        // Update shader view uniform
         view = myCamera.getViewMatrix();
         myBasicShader.useShaderProgram();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -221,7 +223,7 @@ void processMovement() {
 
 	if (pressedKeys[GLFW_KEY_A]) {
 		myCamera.move(gps::MOVE_LEFT, cameraSpeed);
-        // update view matrix for all models
+        // Update shader view uniform
         view = myCamera.getViewMatrix();
         myBasicShader.useShaderProgram();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -229,7 +231,7 @@ void processMovement() {
 
 	if (pressedKeys[GLFW_KEY_D]) {
 		myCamera.move(gps::MOVE_RIGHT, cameraSpeed);
-        // update view matrix for all models
+        // Update shader view uniform
         view = myCamera.getViewMatrix();
         myBasicShader.useShaderProgram();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -237,21 +239,21 @@ void processMovement() {
 
     if (pressedKeys[GLFW_KEY_Q]) {
         angle -= 1.0f;
-        // update model matrix for teapot
+        // Update model matrix for teapot
         model = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0, 1, 0));
-        // update normal matrix for teapot
+        // Update normal matrix for teapot
         normalMatrix = glm::mat3(glm::inverseTranspose(view*model));
     }
 
     if (pressedKeys[GLFW_KEY_E]) {
         angle += 1.0f;
-        // update model matrix for teapot
+        // Update model matrix for teapot
         model = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0, 1, 0));
-        // update normal matrix for teapot
+        // Update normal matrix for teapot
         normalMatrix = glm::mat3(glm::inverseTranspose(view*model));
     }
 
-    // update clap animation each frame
+    // Update clap animation state
     if (clapActive) {
         clapOffset += clapSpeed * (float)clapDirection;
         if (clapOffset >= clapMax) {
@@ -265,14 +267,11 @@ void processMovement() {
         clapOffset = 0.0f;
         clapDirection = 1;
     }
-        // update rabbit appearing animation (scale up)
-        if (rabbitState == 1) {
-            rabbitScale += rabbitScaleSpeed;
-            if (rabbitScale >= 1.0f) {
-                rabbitScale = 1.0f;
-                rabbitState = 2; // fully visible
-            }
-        }
+    // Rabbit visibility is controlled by an instant toggle
+
+    // Advance wheel rotation angle and wrap at 360 degrees
+    wheelAngle += wheelSpeed;
+    if (wheelAngle >= 360.0f) wheelAngle -= 360.0f;
 }
 
 void initOpenGLWindow() {
@@ -284,7 +283,7 @@ void setWindowCallbacks() {
     glfwSetKeyCallback(myWindow.getWindow(), keyboardCallback);
     glfwSetCursorPosCallback(myWindow.getWindow(), mouseCallback);
     glfwSetMouseButtonCallback(myWindow.getWindow(), mouseButtonCallback);
-    // capture and hide the cursor for mouse look
+    // Capture and hide cursor for mouse look
     glfwSetInputMode(myWindow.getWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }
 
@@ -292,15 +291,15 @@ void initOpenGLState() {
 	glClearColor(0.7f, 0.7f, 0.7f, 1.0f);
 	glViewport(0, 0, myWindow.getWindowDimensions().width, myWindow.getWindowDimensions().height);
     glEnable(GL_FRAMEBUFFER_SRGB);
-	glEnable(GL_DEPTH_TEST); // enable depth-testing
-	glDepthFunc(GL_LESS); // depth-testing interprets a smaller value as "closer"
-	glEnable(GL_CULL_FACE); // cull face
-	glCullFace(GL_BACK); // cull back face
-	glFrontFace(GL_CCW); // GL_CCW for counter clock-wise
+    glEnable(GL_DEPTH_TEST); // Enable depth testing
+    glDepthFunc(GL_LESS); // Use less-only depth comparison
+    glEnable(GL_CULL_FACE); // Enable face culling
+    glCullFace(GL_BACK); // Cull back faces
+    glFrontFace(GL_CCW); // Set counter-clockwise winding as front
 }
 
 void initModels() {
-    //TeapotModel.LoadModel("models/teapot/teapot20segUT.obj");
+    // Teapot model loading disabled
     FerisWheelModel.LoadModel("models/FerisWheel/FerisWhee;.obj");
     HatModel.LoadModel("models/Hat/Hat.obj");
     IceCreamModel.LoadModel("models/IceCream/IceCream.obj");
@@ -312,18 +311,24 @@ void initModels() {
     SwingModel.LoadModel("models/Swing/Swing.obj");
     WheelModel.LoadModel("models/Wheel/Wheel.obj");
     TreesModel.LoadModel("models/MoreTrees/NewTrees.obj");
+    // Compute wheel pivot using the wheel mesh center
+    wheelPivot = WheelModel.getCenter();
+    std::cout << "Wheel pivot: " << wheelPivot.x << ", " << wheelPivot.y << ", " << wheelPivot.z << std::endl;
+    // Preserve original exported mesh placement by keeping identity base transforms
+    structureBaseModel = glm::mat4(1.0f);
+    wheelBaseModel = glm::mat4(1.0f);
 }
 
 void initSkybox()
 {
     std::vector<const GLchar*> faces;
-    // prefer existing JPEG faces when available
-    faces.push_back("skybox/posx.jpg"); // right
-    faces.push_back("skybox/negx.jpg"); // left
-    faces.push_back("skybox/posy.jpg"); // top
-    faces.push_back("skybox/negy.jpg"); // bottom
-    faces.push_back("skybox/posz.jpg"); // back
-    faces.push_back("skybox/negz.jpg"); // front
+    // Skybox face textures ordered as +X -X +Y -Y +Z -Z
+    faces.push_back("skybox/posx.jpg");
+    faces.push_back("skybox/negx.jpg");
+    faces.push_back("skybox/posy.jpg");
+    faces.push_back("skybox/negy.jpg");
+    faces.push_back("skybox/posz.jpg");
+    faces.push_back("skybox/negz.jpg");
 
     mySkyBox.Load(faces);
 }
@@ -333,7 +338,7 @@ void initShaders() {
         "shaders/basic.vert",
         "shaders/basic.frag");
 
-    // load skybox shader
+    // Load skybox shader
     skyboxShader.loadShader("shaders/skyboxShader.vert", "shaders/skyboxShader.frag");
     skyboxShader.useShaderProgram();
 }
@@ -341,145 +346,162 @@ void initShaders() {
 void initUniforms() {
 	myBasicShader.useShaderProgram();
 
-    // create model matrix for teapot
+    // Initialize model matrix and retrieve uniform location
     model = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f));
-	modelLoc = glGetUniformLocation(myBasicShader.shaderProgram, "model");
+    modelLoc = glGetUniformLocation(myBasicShader.shaderProgram, "model");
 
-	// get view matrix for current camera
-	view = myCamera.getViewMatrix();
-	viewLoc = glGetUniformLocation(myBasicShader.shaderProgram, "view");
-	// send view matrix to shader
+    // Get view matrix and upload to shader
+    view = myCamera.getViewMatrix();
+    viewLoc = glGetUniformLocation(myBasicShader.shaderProgram, "view");
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
-    // compute normal matrix for teapot
+    // Compute normal matrix for current model-view and retrieve uniform location
     normalMatrix = glm::mat3(glm::inverseTranspose(view*model));
-	normalMatrixLoc = glGetUniformLocation(myBasicShader.shaderProgram, "normalMatrix");
+    normalMatrixLoc = glGetUniformLocation(myBasicShader.shaderProgram, "normalMatrix");
 
-	// create projection matrix
+    // Create projection matrix and set uniform
     projection = glm::perspective(glm::radians(45.0f),
                                (float)myWindow.getWindowDimensions().width / (float)myWindow.getWindowDimensions().height,
                                0.1f, 1000.0f);
-	projectionLoc = glGetUniformLocation(myBasicShader.shaderProgram, "projection");
-	// send projection matrix to shader
-	glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));	
+    projectionLoc = glGetUniformLocation(myBasicShader.shaderProgram, "projection");
+    glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));	
 
-	//set the light direction (direction towards the light)
-	lightDir = glm::vec3(0.0f, 1.0f, 1.0f);
-	lightDirLoc = glGetUniformLocation(myBasicShader.shaderProgram, "lightDir");
-	// send light dir to shader
-	glUniform3fv(lightDirLoc, 1, glm::value_ptr(lightDir));
+    // Set global light direction and upload to shader
+    lightDir = glm::vec3(0.0f, 1.0f, 1.0f);
+    lightDirLoc = glGetUniformLocation(myBasicShader.shaderProgram, "lightDir");
+    glUniform3fv(lightDirLoc, 1, glm::value_ptr(lightDir));
 
-	//set light color
-	lightColor = glm::vec3(1.0f, 1.0f, 1.0f); //white light
-	lightColorLoc = glGetUniformLocation(myBasicShader.shaderProgram, "lightColor");
-	// send light color to shader
-	glUniform3fv(lightColorLoc, 1, glm::value_ptr(lightColor));
+    // Set global light color and upload to shader
+    lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
+    lightColorLoc = glGetUniformLocation(myBasicShader.shaderProgram, "lightColor");
+    glUniform3fv(lightColorLoc, 1, glm::value_ptr(lightColor));
 }
 
 void renderModels(gps::Shader shader) {
     shader.useShaderProgram();
+    glm::mat3 nm;
 
-    // shared model transform used for now; compute normal matrix per draw
-    /*glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    TeapotModel.Draw(shader);*/
-
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    glm::mat3 nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-
-
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    FerisWheelModel.Draw(shader);
-
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    HatModel.Draw(shader);
-
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    IceCreamModel.Draw(shader);
-
-    // Left hand - apply clap translation
+    // Ferris wheel structure rendered with static base transform
     {
-        glm::mat4 leftModel = model;
-        leftModel = glm::translate(leftModel, glm::vec3(clapOffset, 0.0f, 0.0f));
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(leftModel));
-        nm = glm::mat3(glm::inverseTranspose(view * leftModel));
+        glm::mat4 m = structureBaseModel;
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
+        nm = glm::mat3(glm::inverseTranspose(view * m));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        FerisWheelModel.Draw(shader);
+    }
+
+    // Hat rendered with identity transform
+    {
+        glm::mat4 m = glm::mat4(1.0f);
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
+        nm = glm::mat3(glm::inverseTranspose(view * m));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        HatModel.Draw(shader);
+    }
+
+    // Ice cream rendered with identity transform
+    {
+        glm::mat4 m = glm::mat4(1.0f);
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
+        nm = glm::mat3(glm::inverseTranspose(view * m));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        IceCreamModel.Draw(shader);
+    }
+
+    // Left hand translated by clap offset
+    {
+        glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(clapOffset, 0.0f, 0.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
+        nm = glm::mat3(glm::inverseTranspose(view * m));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
         LeftHandsModel.Draw(shader);
     }
 
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    PlaygroundModel.Draw(shader);
-
-    // Rabbit - apply scaling (appearing from hat)
+    // Playground rendered with identity transform
     {
-        glm::mat4 rabbitModel = model;
-        rabbitModel = glm::scale(rabbitModel, glm::vec3(rabbitScale, rabbitScale, rabbitScale));
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(rabbitModel));
-        nm = glm::mat3(glm::inverseTranspose(view * rabbitModel));
+        glm::mat4 m = glm::mat4(1.0f);
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
+        nm = glm::mat3(glm::inverseTranspose(view * m));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        // only draw if scale > 0 (hidden when 0)
+        PlaygroundModel.Draw(shader);
+    }
+
+    // Rabbit rendered with instant scale toggle
+    {
+        glm::mat4 m = glm::scale(glm::mat4(1.0f), glm::vec3(rabbitScale, rabbitScale, rabbitScale));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
+        nm = glm::mat3(glm::inverseTranspose(view * m));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
         if (rabbitScale > 0.0f) RabbitModel.Draw(shader);
     }
 
-    // Right hand - apply clap translation (mirror)
+    // Right hand translated by negative clap offset
     {
-        glm::mat4 rightModel = model;
-        rightModel = glm::translate(rightModel, glm::vec3(-clapOffset, 0.0f, 0.0f));
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(rightModel));
-        nm = glm::mat3(glm::inverseTranspose(view * rightModel));
+        glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(-clapOffset, 0.0f, 0.0f));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
+        nm = glm::mat3(glm::inverseTranspose(view * m));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
         RightHandsModel.Draw(shader);
     }
 
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    SceneModel.Draw(shader);
+    // Scene rendered with identity transform
+    {
+        glm::mat4 m = glm::mat4(1.0f);
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
+        nm = glm::mat3(glm::inverseTranspose(view * m));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        SceneModel.Draw(shader);
+    }
 
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    SwingModel.Draw(shader);
+    // Swing rendered with identity transform
+    {
+        glm::mat4 m = glm::mat4(1.0f);
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
+        nm = glm::mat3(glm::inverseTranspose(view * m));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        SwingModel.Draw(shader);
+    }
 
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    WheelModel.Draw(shader);
+    // Wheel rotated around its local pivot using wheelBaseModel as static base
+    {
+        glm::mat4 localRotate =
+            glm::translate(glm::mat4(1.0f), wheelPivot) *
+            glm::rotate(glm::mat4(1.0f), glm::radians(wheelAngle), glm::vec3(1.0f, 0.0f, 0.0f)) *
+            glm::translate(glm::mat4(1.0f), -wheelPivot);
 
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    TreesModel.Draw(shader);
+        glm::mat4 wheelModel = wheelBaseModel * localRotate;
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(wheelModel));
+        nm = glm::mat3(glm::inverseTranspose(view * wheelModel));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        WheelModel.Draw(shader);
+    }
+
+    // Trees rendered with identity transform
+    {
+        glm::mat4 m = glm::mat4(1.0f);
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(m));
+        nm = glm::mat3(glm::inverseTranspose(view * m));
+        glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        TreesModel.Draw(shader);
+    }
 }
 
 void renderScene() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	//render the scene
-
-    // render all loaded models
+    // Render all scene objects
     renderModels(myBasicShader);
 
-    // draw skybox last
+    // Draw skybox last
     mySkyBox.Draw(skyboxShader, view, projection);
 
-    // camera position logging moved to mouse click handler
+    // Camera position is logged on right mouse click
 
 }
 
 void cleanup() {
     myWindow.Delete();
-    //cleanup code for your own data
+    // Release application resources
 }
 
 int main(int argc, const char * argv[]) {
@@ -495,9 +517,9 @@ int main(int argc, const char * argv[]) {
 	initModels();
     initSkybox();
     initShaders();
-    // clamp camera maximum height to prevent flying above trees
+    // Clamp camera maximum height
     myCamera.setMaxHeight(18.518449f);
-    // restrict camera movement to specified bounds
+    // Restrict camera movement to specified world-space bounds
     myCamera.setMovementBounds(
         glm::vec3(-16.6564f, 1.5543f, -20.506f),
         glm::vec3(27.2437f, 18.518449f, 19.3505f)

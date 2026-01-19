@@ -23,6 +23,9 @@ namespace gps {
 
 		void Draw(gps::Shader shaderProgram);
 
+		// compute model center (bounding box center in model space)
+		glm::vec3 getCenter();
+
     private:
 		// Component meshes - group of objects
         std::vector<gps::Mesh> meshes;
@@ -31,6 +34,7 @@ namespace gps {
 
 		// Does the parsing of the .obj file and fills in the data structure
 		void ReadOBJ(std::string fileName, std::string basePath);
+
 
 		// Retrieves a texture associated with the object - by its name and type
 		gps::Texture LoadTexture(std::string path, std::string type);
