@@ -153,6 +153,10 @@ GLint rainTimeLoc = -1;
 GLint rainCamPosLoc = -1;
 GLint rainIntensityLoc = -1;
 GLint rainColorLoc = -1;
+GLint rainDropWidthLoc = -1;
+GLint rainFallSpeedLoc = -1;
+GLint rainColumnScaleLoc = -1;
+GLint rainRotationLoc = -1;
 float rainIntensity = 0.15f;
 glm::vec3 rainColor = glm::vec3(0.6f, 0.6f, 0.9f);
 
@@ -249,8 +253,8 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
                     // reset exploration state so repeated 'C' runs behave the same
                     cinematicExploreIndex = 0;
                     cinematicExploreStartPos = myCamera.getPosition();
-                    // ensure rabbit will animate in during this cinematic
-                    rabbitScale = 0.0f;
+                    // ensure rabbit is visible immediately during this cinematic (no fade)
+                    rabbitScale = 1.0f;
                 }
             }
             if (key == GLFW_KEY_I) { // toggle rabbit appearance from hat (instant)
@@ -477,6 +481,17 @@ void initRain() {
     rainCamPosLoc = glGetUniformLocation(rainShader.shaderProgram, "camPos");
     rainIntensityLoc = glGetUniformLocation(rainShader.shaderProgram, "intensity");
     rainColorLoc = glGetUniformLocation(rainShader.shaderProgram, "rainColor");
+    // new rain tuning uniforms
+    rainDropWidthLoc = glGetUniformLocation(rainShader.shaderProgram, "dropWidth");
+    rainFallSpeedLoc = glGetUniformLocation(rainShader.shaderProgram, "fallSpeed");
+    rainColumnScaleLoc = glGetUniformLocation(rainShader.shaderProgram, "columnScale");
+    rainRotationLoc = glGetUniformLocation(rainShader.shaderProgram, "dropRotationDeg");
+
+    // set defaults to produce larger, slower rain
+    if (rainDropWidthLoc != -1) glUniform1f(rainDropWidthLoc, 0.025f); // larger drops
+    if (rainFallSpeedLoc != -1) glUniform1f(rainFallSpeedLoc, 0.8f); // slower fall
+    if (rainColumnScaleLoc != -1) glUniform1f(rainColumnScaleLoc, 22.0f); // slightly sparser columns
+    if (rainRotationLoc != -1) glUniform1f(rainRotationLoc, 90.0f); // rotate drops 90 degrees
 }
 
 void initUniforms() {
@@ -704,11 +719,8 @@ void renderModels(gps::Shader shader) {
         // only draw if scale > 0 (hidden when 0)
         if (rabbitScale > 0.0f) {
             // debug: print render mode and flatShading uniform value
-            if (flatShadingLoc != -1) {
-                GLint val = -1;
-                glGetUniformiv(shader.shaderProgram, flatShadingLoc, &val);
-                std::cout << "[Debug] Rabbit renderMode=" << (int)currentRenderMode << " flatShading=" << val << std::endl;
-            }
+            // print current intended flat shading state (use `flatFlag` set for draws)
+            std::cout << "[Debug] Rabbit renderMode=" << (int)currentRenderMode << " flatShading=" << flatFlag << std::endl;
             // enable mesh-level debug prints just for the rabbit draw
             gps::g_debugPrintMeshInfo = true;
             RabbitModel.Draw(shader, flatFlag);
@@ -840,9 +852,9 @@ void updateCinematic(float delta) {
             clapActive = true;
         }
     } else if (cinematicPhase == 1) {
-        // rabbit appear while clapping
+        // rabbit appear while clapping (instant appearance)
         float t = glm::clamp(cinematicTime / CIN_RABBIT, 0.0f, 1.0f);
-        rabbitScale = t; // animate from 0 to 1
+        rabbitScale = 1.0f; // show immediately, no fade
         // keep camera fixed at nearPos
         myCamera.setPosition(nearPos);
         myCamera.setTarget(hatCenterWorld);
