@@ -33,6 +33,24 @@ namespace gps {
         return this->cameraPosition;
     }
 
+    void Camera::setPosition(const glm::vec3& position) {
+        this->cameraPosition = position;
+        // keep target consistent with front direction
+        this->cameraFrontDirection = glm::normalize(this->cameraTarget - this->cameraPosition);
+        this->cameraRightDirection = glm::normalize(glm::cross(this->cameraFrontDirection, this->cameraUpDirection));
+        // recompute yaw/pitch from front
+        this->yaw = glm::degrees(std::atan2(this->cameraFrontDirection.z, this->cameraFrontDirection.x));
+        this->pitch = glm::degrees(std::asin(this->cameraFrontDirection.y));
+    }
+
+    void Camera::setTarget(const glm::vec3& target) {
+        this->cameraTarget = target;
+        this->cameraFrontDirection = glm::normalize(this->cameraTarget - this->cameraPosition);
+        this->cameraRightDirection = glm::normalize(glm::cross(this->cameraFrontDirection, this->cameraUpDirection));
+        this->yaw = glm::degrees(std::atan2(this->cameraFrontDirection.z, this->cameraFrontDirection.x));
+        this->pitch = glm::degrees(std::asin(this->cameraFrontDirection.y));
+    }
+
     //update the camera internal parameters following a camera move event
     void Camera::move(MOVE_DIRECTION direction, float speed) {
         if (direction == MOVE_FORWARD) {

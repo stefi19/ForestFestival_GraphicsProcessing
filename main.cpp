@@ -12,6 +12,7 @@
 #include <glm/gtc/matrix_transform.hpp> //glm extension for generating common transformation matrices
 #include <glm/gtc/matrix_inverse.hpp> //glm extension for computing inverse matrices
 #include <glm/gtc/type_ptr.hpp> //glm extension for accessing the internal data structure of glm types
+#include <glm/gtc/constants.hpp>
 
 #include "Window.h"
 #include "Shader.hpp"
@@ -51,6 +52,15 @@ GLint hatCenterLoc;
 GLint fogStretchLoc;
 GLint fogEnabledLoc;
 GLint fogTimeLoc;
+GLint flatShadingLoc = -1;
+// spotlight uniform locations (arrays 2)
+GLint spotPosLoc[2];
+GLint spotDirLoc[2];
+GLint spotConstLoc[2];
+GLint spotLinearLoc[2];
+GLint spotQuadLoc[2];
+GLint spotCutoffLoc[2];
+GLint spotIntensityLoc[2];
 // current fog parameter copies for debugging
 float currentFogDensity = 0.0f;
 float currentFogRadius = 0.0f;
@@ -72,10 +82,41 @@ int clapDirection = 1; // 1 = moving inward, -1 = moving outward
 
 GLfloat cameraSpeed = 0.1f;
 
+// cinematic camera presentation
+bool cinematicActive = false;
+float cinematicTime = 0.0f;
+// phases: 0=descend,1=rabbit appear+clap,2=hold,3=orbit,4=return,5=done
+int cinematicPhase = -1;
+glm::vec3 cinematic_savedPos;
+glm::vec3 cinematic_savedTarget;
+
+// timing (seconds)
+const float CIN_DESCEND = 4.0f;
+const float CIN_RABBIT = 1.5f;
+const float CIN_HOLD = 2.0f;
+const float CIN_ORBIT = 8.0f;
+const float CIN_RETURN = 3.0f;
+const float CIN_HANDS_FOCUS = 5.0f;
+const float CIN_HANDS_MOVE = 0.8f; // time to move camera to hands focus
+
+// exploration (phase 3) state
+int cinematicExploreIndex = 0;
+glm::vec3 cinematicExploreStartPos = glm::vec3(0.0f);
+const float CIN_EXPLORE_PER = 3.0f; // seconds per focus
+glm::vec3 cinematicHandsStartPos = glm::vec3(0.0f);
+
+
 // rabbit-from-hat animation state (instant toggle: 0 or 1)
 float rabbitScale = 1.0f;
 
+// debug flag to request mesh info prints (defined in gps namespace to match extern)
+bool gps::g_debugPrintMeshInfo = false;
+
 GLboolean pressedKeys[1024];
+
+// render modes
+enum RenderMode { RENDER_SOLID = 0, RENDER_WIREFRAME = 1, RENDER_POLYGONAL = 2, RENDER_SMOOTH = 3 };
+RenderMode currentRenderMode = RENDER_SOLID;
 
 // mouse control
 double lastX = 0.0;
@@ -112,7 +153,7 @@ GLint rainTimeLoc = -1;
 GLint rainCamPosLoc = -1;
 GLint rainIntensityLoc = -1;
 GLint rainColorLoc = -1;
-float rainIntensity = 0.7f;
+float rainIntensity = 0.15f;
 glm::vec3 rainColor = glm::vec3(0.6f, 0.6f, 0.9f);
 
 GLenum glCheckError_(const char *file, int line)
@@ -156,9 +197,61 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
 	if (key >= 0 && key < 1024) {
         if (action == GLFW_PRESS) {
             pressedKeys[key] = true;
+            // render mode keys
+            if (key == GLFW_KEY_7) {
+                currentRenderMode = RENDER_SOLID;
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                std::cout << "Render mode: SOLID" << std::endl;
+            }
+            if (key == GLFW_KEY_8) {
+                currentRenderMode = RENDER_WIREFRAME;
+                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                std::cout << "Render mode: WIREFRAME" << std::endl;
+            }
+            if (key == GLFW_KEY_9) {
+                currentRenderMode = RENDER_POLYGONAL;
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                std::cout << "Render mode: POLYGONAL (flat)" << std::endl;
+                // immediately upload flatShading uniform
+                myBasicShader.useShaderProgram();
+                if (flatShadingLoc != -1) glUniform1i(flatShadingLoc, 1);
+            }
+            if (key == GLFW_KEY_0) {
+                currentRenderMode = RENDER_SMOOTH;
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                std::cout << "Render mode: SMOOTH" << std::endl;
+                // immediately upload flatShading uniform
+                myBasicShader.useShaderProgram();
+                if (flatShadingLoc != -1) glUniform1i(flatShadingLoc, 0);
+            }
+            // alternate keys (function keys) in case number row isn't captured
+            if (key == GLFW_KEY_F7) { currentRenderMode = RENDER_SOLID; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); std::cout<<"Render mode: SOLID (F7)"<<std::endl; }
+            if (key == GLFW_KEY_F8) { currentRenderMode = RENDER_WIREFRAME; glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); std::cout<<"Render mode: WIREFRAME (F8)"<<std::endl; }
+            if (key == GLFW_KEY_F9) { currentRenderMode = RENDER_POLYGONAL; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); myBasicShader.useShaderProgram(); if (flatShadingLoc!=-1) glUniform1i(flatShadingLoc,1); std::cout<<"Render mode: POLYGONAL (F9)"<<std::endl; }
+            if (key == GLFW_KEY_F10) { currentRenderMode = RENDER_SMOOTH; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); myBasicShader.useShaderProgram(); if (flatShadingLoc!=-1) glUniform1i(flatShadingLoc,0); std::cout<<"Render mode: SMOOTH (F10)"<<std::endl; }
             if (key == GLFW_KEY_P) { // toggle clap animation
                 clapActive = !clapActive;
                 if (!clapActive) { clapOffset = 0.0f; clapDirection = 1; } // reset when turned off
+            }
+            if (key == GLFW_KEY_C && action == GLFW_PRESS) {
+                // start cinematic presentation
+                if (!cinematicActive) {
+                    cinematicActive = true;
+                    cinematicTime = 0.0f;
+                    cinematicPhase = 0;
+                    // save current camera state
+                    cinematic_savedPos = myCamera.getPosition();
+                    // approximate current look target by transforming view-space forward into world
+                    glm::mat4 v = myCamera.getViewMatrix();
+                    glm::mat4 invv = glm::inverse(v);
+                    glm::vec4 targetInWorld = invv * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f);
+                    cinematic_savedTarget = glm::vec3(targetInWorld);
+                    // reset exploration state so repeated 'C' runs behave the same
+                    cinematicExploreIndex = 0;
+                    cinematicExploreStartPos = myCamera.getPosition();
+                    // ensure rabbit will animate in during this cinematic
+                    rabbitScale = 0.0f;
+                }
             }
             if (key == GLFW_KEY_I) { // toggle rabbit appearance from hat (instant)
                 if (rabbitScale > 0.0f) {
@@ -205,6 +298,7 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
 }
 
 void processMovement() {
+    if (cinematicActive) return; // disable manual movement during cinematic
 	if (pressedKeys[GLFW_KEY_W]) {
 		myCamera.move(gps::MOVE_FORWARD, cameraSpeed);
         // update view matrix for all models
@@ -448,6 +542,26 @@ void initUniforms() {
     // time uniform for animated fog
     fogTimeLoc = glGetUniformLocation(myBasicShader.shaderProgram, "fogTime");
     if (fogTimeLoc != -1) glUniform1f(fogTimeLoc, 0.0f);
+    // flat/ polygonal shading uniform
+    flatShadingLoc = glGetUniformLocation(myBasicShader.shaderProgram, "flatShading");
+    if (flatShadingLoc != -1) glUniform1i(flatShadingLoc, 0);
+    // spotlight uniform locations and defaults (only 2 outer spotlights)
+    for (int i = 0; i < 2; ++i) {
+        std::string idx = std::to_string(i);
+        spotPosLoc[i] = glGetUniformLocation(myBasicShader.shaderProgram, ("spotPos[" + idx + "]").c_str());
+        spotDirLoc[i] = glGetUniformLocation(myBasicShader.shaderProgram, ("spotDir[" + idx + "]").c_str());
+        spotConstLoc[i] = glGetUniformLocation(myBasicShader.shaderProgram, ("spotConstant[" + idx + "]").c_str());
+        spotLinearLoc[i] = glGetUniformLocation(myBasicShader.shaderProgram, ("spotLinear[" + idx + "]").c_str());
+        spotQuadLoc[i] = glGetUniformLocation(myBasicShader.shaderProgram, ("spotQuadratic[" + idx + "]").c_str());
+        spotCutoffLoc[i] = glGetUniformLocation(myBasicShader.shaderProgram, ("spotCutoffCos[" + idx + "]").c_str());
+        spotIntensityLoc[i] = glGetUniformLocation(myBasicShader.shaderProgram, ("spotIntensity[" + idx + "]").c_str());
+        // set some safe defaults (can be overridden per-frame)
+        if (spotConstLoc[i] != -1) glUniform1f(spotConstLoc[i], 1.0f);
+        if (spotLinearLoc[i] != -1) glUniform1f(spotLinearLoc[i], 0.0045f);
+        if (spotQuadLoc[i] != -1) glUniform1f(spotQuadLoc[i], 0.0075f);
+        if (spotCutoffLoc[i] != -1) glUniform1f(spotCutoffLoc[i], cos(glm::radians(25.0f))); // ~25deg cone
+        if (spotIntensityLoc[i] != -1) glUniform1f(spotIntensityLoc[i], 3.0f); // default stronger intensity
+    }
     // store current fog params for debugging
     currentFogDensity = fogDensity;
     currentFogRadius = fogRadius;
@@ -456,6 +570,12 @@ void initUniforms() {
 
 void renderModels(gps::Shader shader) {
     shader.useShaderProgram();
+
+    // apply global render mode settings for this shader pass
+    if (currentRenderMode == RENDER_WIREFRAME) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    else glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    // compute flat shading flag to forward to draws (meshes will set uniform after binding)
+    int flatFlag = (currentRenderMode == RENDER_POLYGONAL) ? 1 : 0;
 
     // update hat center uniform (compute in world space)
     // compute hat bounds in world space and set fog center at mid-height of hat
@@ -467,10 +587,38 @@ void renderModels(gps::Shader shader) {
     // shift center slightly down so fog sits below mid-hat and extends toward the scene
     hatCenterWorld.y -= 0.40f;
     if (hatCenterLoc != -1) glUniform3fv(hatCenterLoc, 1, glm::value_ptr(hatCenterWorld));
+    // compute rabbit center in world space for spotlight targeting
+    glm::vec3 rabbitCenterModel = RabbitModel.getCenter();
+    glm::vec3 rabbitCenterWorld = glm::vec3(model * glm::vec4(rabbitCenterModel, 1.0f));
+    // choose a target between hat and rabbit centers
+    glm::vec3 spotTarget = (hatCenterWorld + rabbitCenterWorld) * 0.5f;
+    // use only the two outermost spotlight origins (leftmost and rightmost)
+    glm::vec3 spotOrigins[2] = {
+        glm::vec3(-6.7394f, 2.94475f, -20.4938f), // outer-left
+        glm::vec3(7.66052f, 2.94475f, -20.506f)   // outer-right
+    };
+    // upload spot positions and directions and attenuation (per-frame)
+    for (int i = 0; i < 2; ++i) {
+        if (spotPosLoc[i] != -1) glUniform3fv(spotPosLoc[i], 1, glm::value_ptr(spotOrigins[i]));
+        glm::vec3 dir = glm::normalize(spotTarget - spotOrigins[i]);
+        if (spotDirLoc[i] != -1) glUniform3fv(spotDirLoc[i], 1, glm::value_ptr(dir));
+        // attenuation choices: constant=1.0, linear=0.0045, quadratic=0.0075 (adjustable)
+        if (spotConstLoc[i] != -1) glUniform1f(spotConstLoc[i], 1.0f);
+        if (spotLinearLoc[i] != -1) glUniform1f(spotLinearLoc[i], 0.0045f);
+        if (spotQuadLoc[i] != -1) glUniform1f(spotQuadLoc[i], 0.0075f);
+        // cutoff: keep relatively tight cone
+        if (spotCutoffLoc[i] != -1) glUniform1f(spotCutoffLoc[i], cos(glm::radians(25.0f)));
+        if (spotIntensityLoc[i] != -1) glUniform1f(spotIntensityLoc[i], 3.0f);
+    }
     // update animated fog time uniform
     if (fogTimeLoc != -1) {
         float t = (float)glfwGetTime();
         glUniform1f(fogTimeLoc, t);
+    }
+    // set flat shading uniform based on current render mode
+    if (flatShadingLoc != -1) {
+        if (currentRenderMode == RENDER_POLYGONAL) glUniform1i(flatShadingLoc, 1);
+        else glUniform1i(flatShadingLoc, 0);
     }
     // debug: occasionally print hat world center (disabled by default)
     // std::cout << "Hat world center: " << hatCenterWorld.x << ", " << hatCenterWorld.y << ", " << hatCenterWorld.z << std::endl;
@@ -501,20 +649,20 @@ void renderModels(gps::Shader shader) {
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    FerisWheelModel.Draw(shader);
+    FerisWheelModel.Draw(shader, flatFlag);
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
     // disable fog when drawing the hat itself so texture isn't fogged
     if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 0);
-    HatModel.Draw(shader);
+    HatModel.Draw(shader, flatFlag);
     if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 1);
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    IceCreamModel.Draw(shader);
+    IceCreamModel.Draw(shader, flatFlag);
 
     // Left hand - apply clap translation
     {
@@ -523,13 +671,17 @@ void renderModels(gps::Shader shader) {
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(leftModel));
         nm = glm::mat3(glm::inverseTranspose(view * leftModel));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        LeftHandsModel.Draw(shader);
+        // during clap or cinematic appear/hold, draw hands without fog so they're in foreground
+        bool handsForeground = clapActive || (cinematicActive && (cinematicPhase == 1 || cinematicPhase == 2));
+        if (handsForeground && fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 0);
+        LeftHandsModel.Draw(shader, flatFlag);
+        if (handsForeground && fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 1);
     }
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    PlaygroundModel.Draw(shader);
+    PlaygroundModel.Draw(shader, flatFlag);
 
     // Rabbit - apply scaling (appearing from hat)
     {
@@ -538,11 +690,34 @@ void renderModels(gps::Shader shader) {
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(rabbitModel));
         nm = glm::mat3(glm::inverseTranspose(view * rabbitModel));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
+        // ensure render mode is applied for the rabbit explicitly
+        if (currentRenderMode == RENDER_WIREFRAME) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        else glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        // ensure program active and set flat shading uniform specifically for the rabbit draw
+        shader.useShaderProgram();
+        if (flatShadingLoc != -1) {
+            if (currentRenderMode == RENDER_POLYGONAL) glUniform1i(flatShadingLoc, 1);
+            else glUniform1i(flatShadingLoc, 0);
+        }
         // disable fog while drawing the rabbit so its texture isn't fogged
         if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 0);
         // only draw if scale > 0 (hidden when 0)
-        if (rabbitScale > 0.0f) RabbitModel.Draw(shader);
+        if (rabbitScale > 0.0f) {
+            // debug: print render mode and flatShading uniform value
+            if (flatShadingLoc != -1) {
+                GLint val = -1;
+                glGetUniformiv(shader.shaderProgram, flatShadingLoc, &val);
+                std::cout << "[Debug] Rabbit renderMode=" << (int)currentRenderMode << " flatShading=" << val << std::endl;
+            }
+            // enable mesh-level debug prints just for the rabbit draw
+            gps::g_debugPrintMeshInfo = true;
+            RabbitModel.Draw(shader, flatFlag);
+            gps::g_debugPrintMeshInfo = false;
+        }
         if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 1);
+        // restore polygon mode to current global preference
+        if (currentRenderMode == RENDER_WIREFRAME) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        else glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
 
     // Right hand - apply clap translation (mirror)
@@ -552,13 +727,16 @@ void renderModels(gps::Shader shader) {
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(rightModel));
         nm = glm::mat3(glm::inverseTranspose(view * rightModel));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        RightHandsModel.Draw(shader);
+        bool handsForegroundR = clapActive || (cinematicActive && (cinematicPhase == 1 || cinematicPhase == 2));
+        if (handsForegroundR && fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 0);
+        RightHandsModel.Draw(shader, flatFlag);
+        if (handsForegroundR && fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 1);
     }
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    SceneModel.Draw(shader);
+    SceneModel.Draw(shader, flatFlag);
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
@@ -577,7 +755,7 @@ void renderModels(gps::Shader shader) {
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(swingTransform));
         nm = glm::mat3(glm::inverseTranspose(view * swingTransform));
         glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-        SwingModel.Draw(shader);
+        SwingModel.Draw(shader, flatFlag);
         // restore shared model matrix for subsequent draws
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
         nm = glm::mat3(glm::inverseTranspose(view * model));
@@ -587,12 +765,12 @@ void renderModels(gps::Shader shader) {
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    WheelModel.Draw(shader);
+    WheelModel.Draw(shader, flatFlag);
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     nm = glm::mat3(glm::inverseTranspose(view * model));
     glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    TreesModel.Draw(shader);
+    TreesModel.Draw(shader, flatFlag);
 }
 
 void renderScene() {
@@ -628,6 +806,146 @@ void renderScene() {
 
 }
 
+void updateCinematic(float delta) {
+    if (!cinematicActive) return;
+    // while cinematic runs, force hands to clap
+    clapActive = true;
+    cinematicTime += delta;
+
+    // compute hat center world same as in renderModels
+    glm::vec3 hatMinModel = HatModel.getMinBounds();
+    glm::vec3 hatMaxModel = HatModel.getMaxBounds();
+    glm::vec3 hatMinWorld = glm::vec3(model * glm::vec4(hatMinModel, 1.0f));
+    glm::vec3 hatMaxWorld = glm::vec3(model * glm::vec4(hatMaxModel, 1.0f));
+    glm::vec3 hatCenterWorld = glm::vec3((hatMinWorld + hatMaxWorld) * 0.5f);
+    hatCenterWorld.y -= 0.40f;
+
+    // define cinematic positions
+    glm::vec3 topPos = hatCenterWorld + glm::vec3(0.0f, 12.0f, 12.0f);
+    glm::vec3 nearPos = hatCenterWorld + glm::vec3(0.0f, 2.5f, 6.0f);
+
+    if (cinematicPhase == 0) {
+        // descend
+        float t = glm::clamp(cinematicTime / CIN_DESCEND, 0.0f, 1.0f);
+        glm::vec3 pos = glm::mix(topPos, nearPos, t);
+        myCamera.setPosition(pos);
+        myCamera.setTarget(hatCenterWorld);
+        view = myCamera.getViewMatrix();
+        myBasicShader.useShaderProgram();
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        if (t >= 1.0f) {
+            cinematicPhase = 1;
+            cinematicTime = 0.0f;
+            // start rabbit appear + clap
+            clapActive = true;
+        }
+    } else if (cinematicPhase == 1) {
+        // rabbit appear while clapping
+        float t = glm::clamp(cinematicTime / CIN_RABBIT, 0.0f, 1.0f);
+        rabbitScale = t; // animate from 0 to 1
+        // keep camera fixed at nearPos
+        myCamera.setPosition(nearPos);
+        myCamera.setTarget(hatCenterWorld);
+        view = myCamera.getViewMatrix();
+        myBasicShader.useShaderProgram();
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        if (t >= 1.0f) {
+            // transition to hands-focus phase
+            cinematicPhase = 2;
+            cinematicTime = 0.0f;
+            clapActive = true; // ensure clapping
+            cinematicHandsStartPos = myCamera.getPosition();
+        }
+    } else if (cinematicPhase == 2) {
+        // hands focus: move camera to show hands and keep them clapping for CIN_HANDS_FOCUS
+        glm::vec3 leftCenterModel = LeftHandsModel.getCenter();
+        glm::vec3 rightCenterModel = RightHandsModel.getCenter();
+        glm::vec3 leftWorld = glm::vec3(model * glm::vec4(leftCenterModel, 1.0f));
+        glm::vec3 rightWorld = glm::vec3(model * glm::vec4(rightCenterModel, 1.0f));
+        glm::vec3 handsCenter = (leftWorld + rightWorld) * 0.5f;
+        glm::vec3 desiredHandsPos = handsCenter + glm::vec3(0.0f, 2.0f, 4.5f);
+        float moveT = glm::clamp(cinematicTime / CIN_HANDS_MOVE, 0.0f, 1.0f);
+        glm::vec3 pos = glm::mix(cinematicHandsStartPos, desiredHandsPos, moveT);
+        myCamera.setPosition(pos);
+        myCamera.setTarget(handsCenter);
+        view = myCamera.getViewMatrix();
+        myBasicShader.useShaderProgram();
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        // keep clapping while focused on hands; once camera move completes, continue
+        clapActive = true;
+        if (moveT >= 1.0f) {
+            // after reaching hands position, stop clap, hide rabbit, and start exploration at Wheel
+            clapActive = false;
+            rabbitScale = 0.0f;
+            cinematicPhase = 3;
+            cinematicTime = 0.0f;
+            cinematicExploreIndex = 0;
+            cinematicExploreStartPos = myCamera.getPosition();
+        }
+    } else if (cinematicPhase == 3) {
+        // exploration: visit Wheel, IceCream, Swing focusing on each
+        // compute centers
+        glm::vec3 wheelCenterModel = WheelModel.getCenter();
+        glm::vec3 iceCenterModel = IceCreamModel.getCenter();
+        glm::vec3 swingCenterModel = SwingModel.getCenter();
+        glm::vec3 wheelCenterWorld = glm::vec3(model * glm::vec4(wheelCenterModel, 1.0f));
+        glm::vec3 iceCenterWorld = glm::vec3(model * glm::vec4(iceCenterModel, 1.0f));
+        glm::vec3 swingCenterWorld = glm::vec3(model * glm::vec4(swingCenterModel, 1.0f));
+
+        // desired camera offsets relative to each focus center
+        glm::vec3 offsets[3] = {
+            glm::vec3(0.0f, 4.0f, 8.0f),   // Wheel: in front
+            glm::vec3(8.0f, 3.5f, 0.0f),   // IceCream: from right
+            glm::vec3(-8.0f, 3.5f, 0.0f)   // Swing: from left
+        };
+        glm::vec3 targets[3] = { wheelCenterWorld, iceCenterWorld, swingCenterWorld };
+        int nTargets = 3;
+
+        // clamp index
+        if (cinematicExploreIndex < 0) cinematicExploreIndex = 0;
+        if (cinematicExploreIndex >= nTargets) {
+            // finished exploration
+            cinematicPhase = 4;
+            cinematicTime = 0.0f;
+        } else {
+            // compute desired position for current focus
+            glm::vec3 desiredPos = targets[cinematicExploreIndex] + offsets[cinematicExploreIndex];
+            float t = glm::clamp(cinematicTime / CIN_EXPLORE_PER, 0.0f, 1.0f);
+            glm::vec3 pos = glm::mix(cinematicExploreStartPos, desiredPos, t);
+            myCamera.setPosition(pos);
+            myCamera.setTarget(targets[cinematicExploreIndex]);
+            view = myCamera.getViewMatrix();
+            myBasicShader.useShaderProgram();
+            glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+
+            if (t >= 1.0f) {
+                // advance to next focus
+                cinematicExploreIndex++;
+                cinematicTime = 0.0f;
+                cinematicExploreStartPos = myCamera.getPosition();
+            }
+        }
+    } else if (cinematicPhase == 4) {
+        // return to saved camera position smoothly
+        float t = glm::clamp(cinematicTime / CIN_RETURN, 0.0f, 1.0f);
+        glm::vec3 pos = glm::mix(myCamera.getPosition(), cinematic_savedPos, t);
+        glm::vec3 target = glm::mix(hatCenterWorld, cinematic_savedTarget, t);
+        myCamera.setPosition(pos);
+        myCamera.setTarget(target);
+        view = myCamera.getViewMatrix();
+        myBasicShader.useShaderProgram();
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+        if (t >= 1.0f) {
+            cinematicPhase = 5;
+            cinematicActive = false;
+            cinematicTime = 0.0f;
+            // ensure rabbit hidden and clap off
+            rabbitScale = 0.0f;
+            clapActive = false;
+        }
+    }
+}
+
 void cleanup() {
     myWindow.Delete();
     //cleanup code for your own data
@@ -660,8 +978,15 @@ int main(int argc, const char * argv[]) {
 	glCheckError();
 	// application loop
 	while (!glfwWindowShouldClose(myWindow.getWindow())) {
-        processMovement();
-	    renderScene();
+    // update cinematic (if active) and prevent manual movement while it runs
+    static double lastFrameTime = glfwGetTime();
+    double currentFrame = glfwGetTime();
+    float delta = (float)(currentFrame - lastFrameTime);
+    lastFrameTime = currentFrame;
+    updateCinematic(delta);
+
+    processMovement();
+    renderScene();
 
 		glfwPollEvents();
 		glfwSwapBuffers(myWindow.getWindow());

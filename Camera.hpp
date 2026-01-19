@@ -24,6 +24,8 @@ namespace gps {
         //pitch - camera rotation around the x axis
         void rotate(float pitch, float yaw);
         glm::vec3 getPosition();
+        void setPosition(const glm::vec3& position);
+        void setTarget(const glm::vec3& target);
         // set movement bounds (min and max allowed camera coordinates)
         void setMovementBounds(const glm::vec3& minBound, const glm::vec3& maxBound);
         

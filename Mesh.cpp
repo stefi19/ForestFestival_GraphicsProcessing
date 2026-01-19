@@ -1,6 +1,10 @@
 #include "Mesh.hpp"
 #include <glm/gtc/type_ptr.hpp>
+#include <iostream>
 namespace gps {
+
+	// opt-in debug flag defined in main.cpp
+	extern bool g_debugPrintMeshInfo;
 
 	/* Mesh Constructor */
 	Mesh::Mesh(std::vector<Vertex> vertices, std::vector<GLuint> indices, std::vector<Texture> textures, Material material) {
@@ -18,9 +22,15 @@ namespace gps {
 	}
 
 	/* Mesh drawing function - also applies associated textures */
-	void Mesh::Draw(gps::Shader shader)	{
+	void Mesh::Draw(gps::Shader shader, int flatShading) {
 
 		shader.useShaderProgram();
+
+		// ensure flatShading uniform is set after the shader program is active
+		GLint flatLoc = glGetUniformLocation(shader.shaderProgram, "flatShading");
+		if (flatLoc != -1) {
+			glUniform1i(flatLoc, flatShading);
+		}
 
 		// set material uniforms (fallback when no texture)
 		GLint matDiffLoc = glGetUniformLocation(shader.shaderProgram, "materialDiffuse");
@@ -34,6 +44,12 @@ namespace gps {
 		for (GLuint i = 0; i < textures.size(); i++) {
 			if (this->textures[i].type == "diffuseTexture") hasDiffuse = true;
 			if (this->textures[i].type == "specularTexture") hasSpecular = true;
+		}
+
+		if (g_debugPrintMeshInfo) {
+			std::cout << "[MeshDebug] textures=" << textures.size() << " hasDiffuse=" << hasDiffuse
+				<< " materialDiffuse=(" << material.diffuse.r << "," << material.diffuse.g << "," << material.diffuse.b << ")"
+				<< std::endl;
 		}
 		GLint hasDiffLoc = glGetUniformLocation(shader.shaderProgram, "hasDiffuseTexture");
 		if (hasDiffLoc != -1) glUniform1i(hasDiffLoc, hasDiffuse ? 1 : 0);

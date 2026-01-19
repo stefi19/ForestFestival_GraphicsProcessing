@@ -16,8 +16,9 @@ float hash(vec2 p) {
 void main() {
     vec2 uv = UV;
 
-    // scale UV to get more streaks
-    float scale = 60.0;
+    // scale UV to control drop column density (larger -> more columns)
+    // lower value = fewer columns (rarer rain)
+    float scale = 30.0;
     vec2 s = uv * scale;
 
     // vertical falling (no diagonal slant)
@@ -25,14 +26,15 @@ void main() {
 
     // base noise to offset columns
     float n = hash(floor(s));
-    float t = time * 3.0 + n * 10.0;
+    // slower overall fall speed for subtler rain
+    float t = time * 1.5 + n * 8.0;
 
     // compute position along streak direction
     float pos = dot(s, dir);
 
     // make periodic drops
     float drop = fract(pos + t);
-    float width = 0.02; // thin streak
+    float width = 0.01; // narrower streaks for clearer view
     float alpha = smoothstep(width, 0.0, abs(drop - 0.5));
 
     // fade out based on vertical uv to simulate perspective (less at top)
@@ -42,8 +44,8 @@ void main() {
     float a = alpha * intensity * fade;
     vec3 col = rainColor;
 
-    // soften edges
-    a *= smoothstep(0.0, 1.0, fract(pos * 2.0 + t));
+    // soften edges slightly but keep minimum visibility low
+    a *= 0.7 * smoothstep(0.0, 1.0, fract(pos * 2.0 + t));
 
     // clamp
     a = clamp(a, 0.0, 1.0);

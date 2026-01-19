@@ -21,7 +21,7 @@ namespace gps {
 
 		void LoadModel(std::string fileName, std::string basePath);
 
-		void Draw(gps::Shader shaderProgram);
+		void Draw(gps::Shader shaderProgram, int flatShading = 0);
 
 		// compute model center (bounding box center in model space)
 		glm::vec3 getCenter();

@@ -59,7 +59,7 @@ namespace gps {
 
 	    Buffers getBuffers();
 
-	    void Draw(gps::Shader shader);
+    	void Draw(gps::Shader shader, int flatShading = 0);
 
     private:
         /*  Render data  */
@@ -69,6 +69,9 @@ namespace gps {
 	    void setupMesh();
 
     };
+
+    // opt-in global debug flag (defined in main.cpp)
+    extern bool g_debugPrintMeshInfo;
 
 }
 #endif /* Mesh_hpp */
