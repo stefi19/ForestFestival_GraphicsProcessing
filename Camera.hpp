@@ -19,8 +19,8 @@ namespace gps {
         void move(MOVE_DIRECTION direction, float speed);
         //update the camera internal parameters following a camera rotate event
         //yaw - camera rotation around the y axis
-            void setMaxHeight(float maxY);
-            float getMaxHeight();
+        void setMaxHeight(float maxY);
+        float getMaxHeight();
         //pitch - camera rotation around the x axis
         void rotate(float pitch, float yaw);
         glm::vec3 getPosition();
@@ -34,7 +34,7 @@ namespace gps {
         glm::vec3 cameraTarget;
         glm::vec3 cameraFrontDirection;
         glm::vec3 cameraRightDirection;
-            float maxHeight;
+        float maxHeight;
         glm::vec3 minBoundary;
         glm::vec3 maxBoundary;
         glm::vec3 cameraUpDirection;

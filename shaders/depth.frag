@@ -3,6 +3,6 @@
 out vec4 fColor;
 
 void main() {
-    // depth-only pass (dummy color)
+    // depth-only pass
     fColor = vec4(1.0);
 }

@@ -22,13 +22,13 @@ namespace gps {
 
 		shader.useShaderProgram();
 
-		// ensure flatShading uniform is set after the shader program is active
+		// flatShading uniform is set after the shader program is active
 		GLint flatLoc = glGetUniformLocation(shader.shaderProgram, "flatShading");
 		if (flatLoc != -1) {
 			glUniform1i(flatLoc, flatShading);
 		}
 
-		// set material uniforms (fallback when no texture)
+		// set material uniforms
 		GLint matDiffLoc = glGetUniformLocation(shader.shaderProgram, "materialDiffuse");
 		if (matDiffLoc != -1) {
 			glUniform3fv(matDiffLoc, 1, glm::value_ptr(this->material.diffuse));
@@ -41,7 +41,6 @@ namespace gps {
 			if (this->textures[i].type == "diffuseTexture") hasDiffuse = true;
 			if (this->textures[i].type == "specularTexture") hasSpecular = true;
 		}
-		// mesh debug prints removed
 		GLint hasDiffLoc = glGetUniformLocation(shader.shaderProgram, "hasDiffuseTexture");
 		if (hasDiffLoc != -1) glUniform1i(hasDiffLoc, hasDiffuse ? 1 : 0);
 		GLint hasSpecLoc = glGetUniformLocation(shader.shaderProgram, "hasSpecularTexture");

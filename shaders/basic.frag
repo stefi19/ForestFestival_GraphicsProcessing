@@ -42,7 +42,7 @@ vec3 diffuse;
 vec3 specular;
 float specularStrength = 0.5f;
 
-// Shadow calculation helper (declared at global scope)
+// Shadow calculation helper
 float ShadowCalculation(vec4 fragPosLightSpace, vec3 normalEye) {
     // perspective divide
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
@@ -54,7 +54,7 @@ float ShadowCalculation(vec4 fragPosLightSpace, vec3 normalEye) {
     float closestDepth = texture(shadowMap, projCoords.xy).r;
     // current depth
     float currentDepth = projCoords.z;
-    // bias to reduce shadow acne
+    // reduce shadow acne
     float bias = max(0.0025 * (1.0 - dot(normalEye, normalize(vec3(view * vec4(lightDir,0.0))))), 0.0005);
     // PCF sampling
     float shadow = 0.0;
@@ -75,7 +75,7 @@ void main()
     vec4 fPosEye = view * model * vec4(fPosition, 1.0);
     vec3 fragPosWorld = vec3(model * vec4(fPosition, 1.0));
 
-    // choose normal: geometric face normal when flat shading requested
+    // choose normal
     vec3 normalEye;
     if (flatShading == 1) {
         // compute geometric normal in world space using derivatives
@@ -85,10 +85,10 @@ void main()
         normalEye = normalize(normalMatrix * fNormal);
     }
 
-    // normalize directional light direction (eye space)
+    // normalize directional light direction
     vec3 lightDirN = vec3(normalize(view * vec4(lightDir, 0.0f)));
 
-    // view direction (eye coordinates)
+    // view direction
     vec3 viewDir = normalize(- fPosEye.xyz);
 
     //compute base directional ambient/diffuse/specular
@@ -120,16 +120,16 @@ void main()
         }
     }
 
-    // determine diffuse color (texture if present)
+    // determine diffuse color
     vec3 diffCol = hasDiffuseTexture == 1 ? texture(diffuseTexture, fTexCoords).rgb : materialDiffuse;
     vec3 specCol = hasSpecularTexture == 1 ? texture(specularTexture, fTexCoords).rgb : vec3(1.0);
 
-    // combine directional + spot contributions
+    // combine directional and spot contributions
     vec3 totalAmbient = ambient + spotAmbient;
     vec3 totalDiffuse = diffuse + spotDiffuse;
     vec3 totalSpecular = specular + spotSpecular;
 
-    // compute shadow factor and final color (attenuate diffuse+specular when in shadow)
+    // compute shadow and final color
     float shadow = ShadowCalculation(fFragPosLightSpace, normalEye);
     vec3 lit = (totalAmbient + (1.0 - shadow) * totalDiffuse) * diffCol + (1.0 - shadow) * totalSpecular * specCol;
     vec3 color = min(lit, 1.0f);
@@ -146,12 +146,11 @@ void main()
     float wobble = sin(fogTime * 1.2 + (dx + dz) * 0.5) * 0.25;
     dy += wobble;
     float nd = sqrt((dx*dx)/(rx*rx) + (dz*dz)/(rz*rz) + (dy*dy)/(ry*ry));
-    // mask: 1 at center, 0 at or beyond ellipsoid
     float mask = clamp(1.0 - nd, 0.0, 1.0);
 
     float fogStrength = clamp(mask * fogDensity, 0.0, 1.0) * float(fogEnabled);
 
-    // subtle swirling modulation
+    // swirling modulation
     float swirl = 0.85 + 0.15 * sin(3.0 * (dx + dz) + fogTime * 2.0);
     fogStrength *= swirl;
 

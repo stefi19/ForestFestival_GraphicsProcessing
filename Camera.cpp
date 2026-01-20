@@ -16,7 +16,7 @@ namespace gps {
         this->yaw = glm::degrees(std::atan2(this->cameraFrontDirection.z, this->cameraFrontDirection.x));
         this->pitch = glm::degrees(std::asin(this->cameraFrontDirection.y));
         this->maxHeight = 1000.0f; // default very high
-        // default movement bounds (very large by default)
+        // default movement bounds
         this->minBoundary = glm::vec3(-10000.0f);
         this->maxBoundary = glm::vec3(10000.0f);
         
@@ -67,7 +67,8 @@ namespace gps {
             this->cameraTarget -= this->cameraRightDirection * speed;
         } else if (direction == MOVE_UP) {
             glm::vec3 newPos = this->cameraPosition + this->cameraUpDirection * speed;
-            if (newPos.y > this->maxHeight) newPos.y = this->maxHeight;
+            if (newPos.y > this->maxHeight) 
+                newPos.y = this->maxHeight;
             glm::vec3 delta = newPos - this->cameraPosition;
             this->cameraPosition += delta;
             this->cameraTarget += delta;

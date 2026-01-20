@@ -1,32 +1,35 @@
 #ifndef WINDOW_H
 #define WINDOW_H
 
-#if defined (__APPLE__)
-    #define GLFW_INCLUDE_GLCOREARB
-    #define GL_SILENCE_DEPRECATION
+#if defined(__APPLE__)
+#define GLFW_INCLUDE_GLCOREARB
+#define GL_SILENCE_DEPRECATION
 #else
-    #define GLEW_STATIC
-    #include <GL/glew.h>
+#define GLEW_STATIC
+#include <GL/glew.h>
 #endif
 
 #include <GLFW/glfw3.h>
 
 #include <stdexcept>
 
-struct WindowDimensions {
+struct WindowDimensions
+{
     int width;
     int height;
 };
 
-namespace gps {
+namespace gps
+{
 
-    class Window {
+    class Window
+    {
 
     public:
-        void Create(int width=800, int height=600, const char *title="OpenGL Project");
+        void Create(int width = 800, int height = 600, const char *title = "OpenGL Project");
         void Delete();
 
-        GLFWwindow* getWindow();
+        GLFWwindow *getWindow();
         WindowDimensions getWindowDimensions();
         void setWindowDimensions(WindowDimensions dimensions);
 
@@ -36,4 +39,4 @@ namespace gps {
     };
 }
 
-#endif //WINDOW_H
+#endif // WINDOW_H

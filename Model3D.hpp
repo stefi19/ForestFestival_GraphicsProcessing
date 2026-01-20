@@ -9,12 +9,14 @@
 #include <string>
 #include <vector>
 
-namespace gps {
+namespace gps
+{
 
-    class Model3D {
+	class Model3D
+	{
 
-    public:
-        ~Model3D();
+	public:
+		~Model3D();
 
 		void LoadModel(std::string fileName);
 
@@ -22,28 +24,23 @@ namespace gps {
 
 		void Draw(gps::Shader shaderProgram, int flatShading = 0);
 
-		// compute model center (bounding box center in model space)
+		// compute model center
 		glm::vec3 getCenter();
-		// debug: return axis-aligned bounds
 		glm::vec3 getMinBounds();
 		glm::vec3 getMaxBounds();
 
-    private:
-		// Component meshes - group of objects
-        std::vector<gps::Mesh> meshes;
+	private:
+		// Component meshes
+		std::vector<gps::Mesh> meshes;
 		// Associated textures
-        std::vector<gps::Texture> loadedTextures;
-
+		std::vector<gps::Texture> loadedTextures;
 		// Does the parsing of the .obj file and fills in the data structure
 		void ReadOBJ(std::string fileName, std::string basePath);
-
-
-		// Retrieves a texture associated with the object - by its name and type
+		// Retrieves a texture associated with the object
 		gps::Texture LoadTexture(std::string path, std::string type);
-
 		// Reads the pixel data from an image file and loads it into the video memory
-		GLuint ReadTextureFromFile(const char* file_name);
-    };
+		GLuint ReadTextureFromFile(const char *file_name);
+	};
 }
 
 #endif /* Model3D_hpp */
