@@ -38,10 +38,9 @@ namespace gps {
 #endif
 
         // get version info
-        const GLubyte* renderer = glGetString(GL_RENDERER); // get renderer string
-        const GLubyte* version = glGetString(GL_VERSION); // version as a string
-        std::cout << "Renderer: " << renderer << std::endl;
-        std::cout << "OpenGL version: " << version << std::endl;
+        // retrieve renderer/version info (no logging in cleaned build)
+        (void)glGetString(GL_RENDERER);
+        (void)glGetString(GL_VERSION);
 
         //for RETINA display
         glfwGetFramebufferSize(window, &this->dimensions.width, &this->dimensions.height);

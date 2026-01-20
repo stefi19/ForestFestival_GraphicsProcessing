@@ -7,32 +7,28 @@ in vec4 fFragPosLightSpace;
 
 out vec4 fColor;
 
-//matrices
+// shader uniforms
 uniform mat4 model;
 uniform mat4 view;
 uniform mat3 normalMatrix;
-//lighting
 uniform vec3 lightDir;
 uniform vec3 lightColor;
-// spotlights
 uniform vec3 spotPos[2];
 uniform vec3 spotDir[2];
 uniform float spotConstant[2];
 uniform float spotLinear[2];
 uniform float spotQuadratic[2];
-uniform float spotCutoffCos[2]; // cosine of cutoff angle
+uniform float spotCutoffCos[2];
 uniform float spotIntensity[2];
-// fog (localized around hat)
 uniform vec3 fogColor;
 uniform float fogDensity;
-uniform float fogRadius; // depth (Z) radius
-uniform float fogRadiusX; // left/right (X) radius
+uniform float fogRadius;
+uniform float fogRadiusX;
 uniform float fogStretchDown;
 uniform vec3 hatCenterWorld;
 uniform int fogEnabled;
 uniform float fogTime;
 uniform int flatShading;
-// textures
 uniform sampler2D diffuseTexture;
 uniform sampler2D specularTexture;
 uniform vec3 materialDiffuse;
@@ -40,7 +36,6 @@ uniform int hasDiffuseTexture;
 uniform int hasSpecularTexture;
 uniform sampler2D shadowMap;
 
-//components
 vec3 ambient;
 float ambientStrength = 0.2f;
 vec3 diffuse;
@@ -49,7 +44,7 @@ float specularStrength = 0.5f;
 
 // Shadow calculation helper (declared at global scope)
 float ShadowCalculation(vec4 fragPosLightSpace, vec3 normalEye) {
-    // perform perspective divide
+    // perspective divide
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     // transform to [0,1]
     projCoords = projCoords * 0.5 + 0.5;
@@ -61,9 +56,9 @@ float ShadowCalculation(vec4 fragPosLightSpace, vec3 normalEye) {
     float currentDepth = projCoords.z;
     // bias to reduce shadow acne
     float bias = max(0.0025 * (1.0 - dot(normalEye, normalize(vec3(view * vec4(lightDir,0.0))))), 0.0005);
-    // simple PCF
+    // PCF sampling
     float shadow = 0.0;
-    float texelSize = 1.0 / 2048.0; // matches SHADOW_* used in main (hardcoded here)
+    float texelSize = 1.0 / 2048.0;
     for(int x = -1; x <= 1; ++x) {
         for(int y = -1; y <= 1; ++y) {
             float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
@@ -80,7 +75,7 @@ void main()
     vec4 fPosEye = view * model * vec4(fPosition, 1.0);
     vec3 fragPosWorld = vec3(model * vec4(fPosition, 1.0));
 
-    // choose normal: geometric face normal when flat shading requested, otherwise interpolated normal
+    // choose normal: geometric face normal when flat shading requested
     vec3 normalEye;
     if (flatShading == 1) {
         // compute geometric normal in world space using derivatives
@@ -90,10 +85,10 @@ void main()
         normalEye = normalize(normalMatrix * fNormal);
     }
 
-    //normalize directional light direction (in eye space)
+    // normalize directional light direction (eye space)
     vec3 lightDirN = vec3(normalize(view * vec4(lightDir, 0.0f)));
 
-    //compute view direction (in eye coordinates, the viewer is situated at the origin)
+    // view direction (eye coordinates)
     vec3 viewDir = normalize(- fPosEye.xyz);
 
     //compute base directional ambient/diffuse/specular
@@ -108,32 +103,24 @@ void main()
     vec3 spotDiffuse = vec3(0.0);
     vec3 spotSpecular = vec3(0.0);
     for (int i = 0; i < 2; ++i) {
-        // convert spotlight position and direction to eye space
         vec3 spotPosEye = vec3(view * vec4(spotPos[i], 1.0));
         vec3 spotDirEye = normalize(vec3(view * vec4(spotDir[i], 0.0)));
-        // direction from fragment to light (eye space)
         vec3 lightDirSpot = normalize(spotPosEye - fPosEye.xyz);
-        // angle between spotlight direction and fragment direction
         float theta = dot(normalize(spotDirEye), lightDirSpot);
-        // distance attenuation
         float dist = length(spotPosEye - fPosEye.xyz);
         float att = 1.0 / (spotConstant[i] + spotLinear[i] * dist + spotQuadratic[i] * (dist * dist));
         if (theta > spotCutoffCos[i]) {
-            // optional smooth edge using pow of theta
             float spotEffect = pow(theta, 20.0);
-            // ambient contribution
             spotAmbient += att * ambientStrength * lightColor * spotEffect * spotIntensity[i];
-            // diffuse
             float diff = max(dot(normalEye, lightDirSpot), 0.0);
             spotDiffuse += att * diff * lightColor * spotEffect * spotIntensity[i];
-            // specular
             vec3 reflectSpot = reflect(-lightDirSpot, normalEye);
             float specC = pow(max(dot(viewDir, reflectSpot), 0.0), 32);
             spotSpecular += att * specularStrength * specC * lightColor * spotEffect * spotIntensity[i];
         }
     }
 
-    // determine diffuse color (texture if present, otherwise material)
+    // determine diffuse color (texture if present)
     vec3 diffCol = hasDiffuseTexture == 1 ? texture(diffuseTexture, fTexCoords).rgb : materialDiffuse;
     vec3 specCol = hasSpecularTexture == 1 ? texture(specularTexture, fTexCoords).rgb : vec3(1.0);
 
@@ -142,38 +129,29 @@ void main()
     vec3 totalDiffuse = diffuse + spotDiffuse;
     vec3 totalSpecular = specular + spotSpecular;
 
-    // ShadowCalculation is defined at global scope (above main)
-
     // compute shadow factor and final color (attenuate diffuse+specular when in shadow)
     float shadow = ShadowCalculation(fFragPosLightSpace, normalEye);
     vec3 lit = (totalAmbient + (1.0 - shadow) * totalDiffuse) * diffCol + (1.0 - shadow) * totalSpecular * specCol;
     vec3 color = min(lit, 1.0f);
 
-    // compute ellipsoidal mask around hat center, stretched downward to cover the scene
+    // compute ellipsoidal mask around hat center
     vec3 delta = fragPosWorld - hatCenterWorld;
     float dx = delta.x;
     float dy = delta.y;
     float dz = delta.z;
 
-    // horizontal radii: X can be stretched separately from Z to extend left/right
     float rx = fogRadiusX;
     float rz = fogRadius;
-    // vertical radius: larger downward, slightly larger upward to make fog extend a bit up
     float ry = dy < 0.0 ? fogRadius * fogStretchDown : fogRadius * 0.9;
-
-    // add a subtle vertical wobble so the fog appears to float
-    float wobble = sin(fogTime * 1.2 + (dx + dz) * 0.5) * 0.25; // amplitude ~0.25 units
-    // apply wobble to vertical delta so the ellipsoid moves up/down locally
+    float wobble = sin(fogTime * 1.2 + (dx + dz) * 0.5) * 0.25;
     dy += wobble;
-
-    // normalized ellipsoid distance
     float nd = sqrt((dx*dx)/(rx*rx) + (dz*dz)/(rz*rz) + (dy*dy)/(ry*ry));
     // mask: 1 at center, 0 at or beyond ellipsoid
     float mask = clamp(1.0 - nd, 0.0, 1.0);
 
     float fogStrength = clamp(mask * fogDensity, 0.0, 1.0) * float(fogEnabled);
 
-    // subtle swirling modulation to make fog look more organic
+    // subtle swirling modulation
     float swirl = 0.85 + 0.15 * sin(3.0 * (dx + dz) + fogTime * 2.0);
     fogStrength *= swirl;
 

@@ -39,9 +39,8 @@ namespace gps {
         glGetShaderiv(shaderId, GL_COMPILE_STATUS, &success);
 
         if(!success) {
-
             glGetShaderInfoLog(shaderId, 512, NULL, infoLog);
-            std::cout << "Shader compilation error\n" << infoLog << std::endl;
+            // shader compilation errors not logged in cleaned build
         }
     }
     
@@ -54,7 +53,7 @@ namespace gps {
         glGetProgramiv(shaderProgramId, GL_LINK_STATUS, &success);
         if(!success) {
             glGetProgramInfoLog(shaderProgramId, 512, NULL, infoLog);
-            std::cout << "Shader linking error\n" << infoLog << std::endl;
+            // shader linking errors not logged in cleaned build
         }
     }
     

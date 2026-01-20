@@ -1,6 +1,5 @@
 #include "SkyBox.hpp"
 #include "stb_image.h"
-#include <iostream>
 
 namespace gps {
 
@@ -53,7 +52,7 @@ GLuint SkyBox::LoadSkyBoxTextures(const std::vector<const GLchar*> &skyBoxFaces)
     {
         image = stbi_load(skyBoxFaces[i], &width, &height, &n, force_channels);
         if (!image) {
-            fprintf(stderr, "ERROR: could not load %s\n", skyBoxFaces[i]);
+            // failed to load skybox face
             return 0;
         }
         glTexImage2D(

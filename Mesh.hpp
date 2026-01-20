@@ -70,8 +70,7 @@ namespace gps {
 
     };
 
-    // opt-in global debug flag (defined in main.cpp)
-    extern bool g_debugPrintMeshInfo;
+    // debug flag removed
 
 }
 #endif /* Mesh_hpp */

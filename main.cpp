@@ -20,7 +20,6 @@
 #include "Model3D.hpp"
 #include "SkyBox.hpp"
 
-#include <iostream>
 
 // window
 gps::Window myWindow;
@@ -29,7 +28,6 @@ gps::Window myWindow;
 glm::mat4 model;
 glm::mat4 view;
 glm::mat4 projection;
-        // Balloons skipped (not loaded)
 glm::mat3 normalMatrix;
 
 // light parameters
@@ -61,10 +59,6 @@ GLint spotLinearLoc[2];
 GLint spotQuadLoc[2];
 GLint spotCutoffLoc[2];
 GLint spotIntensityLoc[2];
-// current fog parameter copies for debugging
-float currentFogDensity = 0.0f;
-float currentFogRadius = 0.0f;
-float currentFogStretchDown = 0.0f;
 
 // camera
 gps::Camera myCamera(
@@ -109,8 +103,7 @@ glm::vec3 cinematicHandsStartPos = glm::vec3(0.0f);
 // rabbit-from-hat animation state (instant toggle: 0 or 1)
 float rabbitScale = 1.0f;
 
-// debug flag to request mesh info prints (defined in gps namespace to match extern)
-bool gps::g_debugPrintMeshInfo = false;
+// (debug flags and prints removed)
 
 GLboolean pressedKeys[1024];
 
@@ -170,34 +163,15 @@ glm::vec3 rainColor = glm::vec3(0.6f, 0.6f, 0.9f);
 GLenum glCheckError_(const char *file, int line)
 {
 	GLenum errorCode;
-	while ((errorCode = glGetError()) != GL_NO_ERROR) {
-		std::string error;
-		switch (errorCode) {
-            case GL_INVALID_ENUM:
-                error = "INVALID_ENUM";
-                break;
-            case GL_INVALID_VALUE:
-                error = "INVALID_VALUE";
-                break;
-            case GL_INVALID_OPERATION:
-                error = "INVALID_OPERATION";
-                break;
-            case GL_OUT_OF_MEMORY:
-                error = "OUT_OF_MEMORY";
-                break;
-            case GL_INVALID_FRAMEBUFFER_OPERATION:
-                error = "INVALID_FRAMEBUFFER_OPERATION";
-                break;
-        }
-		std::cout << error << " | " << file << " (" << line << ")" << std::endl;
-	}
+    while ((errorCode = glGetError()) != GL_NO_ERROR) {
+        // consume GL errors
+    }
 	return errorCode;
 }
 #define glCheckError() glCheckError_(__FILE__, __LINE__)
 
-void windowResizeCallback(GLFWwindow* window, int width, int height) {
-	fprintf(stdout, "Window resized! New width: %d , and height: %d\n", width, height);
-	//TODO
+void windowResizeCallback(GLFWwindow* /*window*/, int /*width*/, int /*height*/) {
+    // no-op resize logging
 }
 
 void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int mode) {
@@ -209,20 +183,17 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
         if (action == GLFW_PRESS) {
             pressedKeys[key] = true;
             // render mode keys
-            if (key == GLFW_KEY_7) {
+                if (key == GLFW_KEY_7) {
                 currentRenderMode = RENDER_SOLID;
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                std::cout << "Render mode: SOLID" << std::endl;
             }
             if (key == GLFW_KEY_8) {
                 currentRenderMode = RENDER_WIREFRAME;
                 glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-                std::cout << "Render mode: WIREFRAME" << std::endl;
             }
             if (key == GLFW_KEY_9) {
                 currentRenderMode = RENDER_POLYGONAL;
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                std::cout << "Render mode: POLYGONAL (flat)" << std::endl;
                 // immediately upload flatShading uniform
                 myBasicShader.useShaderProgram();
                 if (flatShadingLoc != -1) glUniform1i(flatShadingLoc, 1);
@@ -230,16 +201,15 @@ void keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int
             if (key == GLFW_KEY_0) {
                 currentRenderMode = RENDER_SMOOTH;
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                std::cout << "Render mode: SMOOTH" << std::endl;
                 // immediately upload flatShading uniform
                 myBasicShader.useShaderProgram();
                 if (flatShadingLoc != -1) glUniform1i(flatShadingLoc, 0);
             }
             // alternate keys (function keys) in case number row isn't captured
-            if (key == GLFW_KEY_F7) { currentRenderMode = RENDER_SOLID; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); std::cout<<"Render mode: SOLID (F7)"<<std::endl; }
-            if (key == GLFW_KEY_F8) { currentRenderMode = RENDER_WIREFRAME; glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); std::cout<<"Render mode: WIREFRAME (F8)"<<std::endl; }
-            if (key == GLFW_KEY_F9) { currentRenderMode = RENDER_POLYGONAL; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); myBasicShader.useShaderProgram(); if (flatShadingLoc!=-1) glUniform1i(flatShadingLoc,1); std::cout<<"Render mode: POLYGONAL (F9)"<<std::endl; }
-            if (key == GLFW_KEY_F10) { currentRenderMode = RENDER_SMOOTH; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); myBasicShader.useShaderProgram(); if (flatShadingLoc!=-1) glUniform1i(flatShadingLoc,0); std::cout<<"Render mode: SMOOTH (F10)"<<std::endl; }
+            if (key == GLFW_KEY_F7) { currentRenderMode = RENDER_SOLID; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); }
+            if (key == GLFW_KEY_F8) { currentRenderMode = RENDER_WIREFRAME; glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); }
+            if (key == GLFW_KEY_F9) { currentRenderMode = RENDER_POLYGONAL; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); myBasicShader.useShaderProgram(); if (flatShadingLoc!=-1) glUniform1i(flatShadingLoc,1); }
+            if (key == GLFW_KEY_F10) { currentRenderMode = RENDER_SMOOTH; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); myBasicShader.useShaderProgram(); if (flatShadingLoc!=-1) glUniform1i(flatShadingLoc,0); }
             if (key == GLFW_KEY_P) { // toggle clap animation
                 clapActive = !clapActive;
                 if (!clapActive) { clapOffset = 0.0f; clapDirection = 1; } // reset when turned off
@@ -303,8 +273,7 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
 
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
-        glm::vec3 pos = myCamera.getPosition();
-        std::cout << "Camera X: " << pos.x << " Y: " << pos.y << " Z: " << pos.z << std::endl;
+        // camera position logging removed
     }
 }
 
@@ -427,9 +396,7 @@ void initModels() {
     WheelModel.LoadModel("models/Wheel/Wheel.obj");
     TreesModel.LoadModel("models/MoreTrees/NewTrees.obj");
 
-    // debug: print hat model-space center to help position fog
-    glm::vec3 hatCenterModel = HatModel.getCenter();
-    std::cout << "Hat model center: X:" << hatCenterModel.x << " Y:" << hatCenterModel.y << " Z:" << hatCenterModel.z << std::endl;
+    // hat center computed as needed; debug prints removed
 }
 
 void initSkybox()
@@ -623,10 +590,7 @@ void initUniforms() {
         if (spotCutoffLoc[i] != -1) glUniform1f(spotCutoffLoc[i], cos(glm::radians(25.0f))); // ~25deg cone
         if (spotIntensityLoc[i] != -1) glUniform1f(spotIntensityLoc[i], 3.0f); // default stronger intensity
     }
-    // store current fog params for debugging
-    currentFogDensity = fogDensity;
-    currentFogRadius = fogRadius;
-    currentFogStretchDown = fogStretchDown;
+    // debug copies removed
 }
 
 void renderModels(gps::Shader shader) {
@@ -683,24 +647,9 @@ void renderModels(gps::Shader shader) {
     }
     // debug: occasionally print hat world center (disabled by default)
     // std::cout << "Hat world center: " << hatCenterWorld.x << ", " << hatCenterWorld.y << ", " << hatCenterWorld.z << std::endl;
-    // periodic debug print of hat/fog params
-        // periodic fog debug print disabled (set to false to enable)
-        if (false) {
-            static double lastPrint = 0.0;
-            double now = glfwGetTime();
-            if (now - lastPrint > 1.0) {
-                lastPrint = now;
-                std::cout << "[FogDebug] hatCenterWorld=" << hatCenterWorld.x << "," << hatCenterWorld.y << "," << hatCenterWorld.z
-                    << " fogRadius=" << currentFogRadius << " fogDensity=" << currentFogDensity
-                    << " fogStretchDown=" << currentFogStretchDown << std::endl;
-            }
-        }
+    // periodic fog debug removed
 
     // shared model transform used for now; compute normal matrix per draw
-    /*glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    nm = glm::mat3(glm::inverseTranspose(view * model));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(nm));
-    TeapotModel.Draw(shader);*/
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glm::mat3 nm = glm::mat3(glm::inverseTranspose(view * model));
@@ -764,13 +713,7 @@ void renderModels(gps::Shader shader) {
         if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 0);
         // only draw if scale > 0 (hidden when 0)
         if (rabbitScale > 0.0f) {
-            // debug: print render mode and flatShading uniform value
-            // print current intended flat shading state (use `flatFlag` set for draws)
-            std::cout << "[Debug] Rabbit renderMode=" << (int)currentRenderMode << " flatShading=" << flatFlag << std::endl;
-            // enable mesh-level debug prints just for the rabbit draw
-            gps::g_debugPrintMeshInfo = true;
             RabbitModel.Draw(shader, flatFlag);
-            gps::g_debugPrintMeshInfo = false;
         }
         if (fogEnabledLoc != -1) glUniform1i(fogEnabledLoc, 1);
         // restore polygon mode to current global preference
@@ -1088,8 +1031,7 @@ int main(int argc, const char * argv[]) {
 
     try {
         initOpenGLWindow();
-    } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
+    } catch (const std::exception& /*e*/) {
         return EXIT_FAILURE;
     }
 

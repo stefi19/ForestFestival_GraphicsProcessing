@@ -41,23 +41,16 @@ namespace gps {
 	// Does the parsing of the .obj file and fills in the data structure
 	void Model3D::ReadOBJ(std::string fileName, std::string basePath) {
 
-        std::cout << "Loading : " << fileName << std::endl;
 		tinyobj::attrib_t attrib;
 		std::vector<tinyobj::shape_t> shapes;
 		std::vector<tinyobj::material_t> materials;
 		int materialId;
 
 		std::string err;
-		std::cout << "tinyobj::LoadObj start for " << fileName << std::endl;
-		std::cout.flush();
 		bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, fileName.c_str(), basePath.c_str(), GL_TRUE);
-		std::cout << "tinyobj::LoadObj end for " << fileName << std::endl;
-		std::cout.flush();
 
 		if (!err.empty()) {
-
-			// `err` may contain warning message.
-			std::cerr << err << std::endl;
+			// `err` may contain warning message (not printed in cleaned build)
 		}
 
 		if (!ret) {
@@ -65,8 +58,7 @@ namespace gps {
 			exit(1);
 		}
 
-		std::cout << "# of shapes    : " << shapes.size() << std::endl;
-		std::cout << "# of materials : " << materials.size() << std::endl;
+		// shape/material counts intentionally not logged
 
 		// Loop over shapes
 		for (size_t s = 0; s < shapes.size(); s++) {
@@ -189,7 +181,7 @@ namespace gps {
 				}
 			}
 
-		std::cout << "Loading texture: " << path << std::endl;
+		// texture loading debug output removed
 
 		gps::Texture currentTexture;
 		currentTexture.id = ReadTextureFromFile(path.c_str());
@@ -209,15 +201,11 @@ namespace gps {
 		unsigned char* image_data = stbi_load(file_name, &x, &y, &n, force_channels);
 
 		if (!image_data) {
-			fprintf(stderr, "ERROR: could not load %s\n", file_name);
+			// texture load failed
 			return false;
 		}
 		// NPOT check
-		if ((x & (x - 1)) != 0 || (y & (y - 1)) != 0) {
-			fprintf(
-				stderr, "WARNING: texture %s is not power-of-2 dimensions\n", file_name
-			);
-		}
+		// NPOT check omitted from log (kept behavior)
 
 		int width_in_bytes = x * 4;
 		unsigned char *top = NULL;
